@@ -1,0 +1,28 @@
+{
+  "entry_function": "fib",
+  "comparison": {
+    "mode": "exact"
+  },
+  "test_cases": [
+    { "name": "case_0", "args": [0], "expected": 0 },
+    { "name": "case_1", "args": [1], "expected": 1 },
+    { "name": "case_2", "args": [2], "expected": 1 },
+    { "name": "case_5", "args": [5], "expected": 5 },
+    { "name": "case_12", "args": [12], "expected": 144 }
+  ],
+  "generated_cases": [
+    {
+      "type": "fibonacci",
+      "name_prefix": "medium_random",
+      "seed": 20260430,
+      "count": 8,
+      "min_n": 20,
+      "max_n": 45
+    },
+    {
+      "type": "fibonacci",
+      "name_prefix": "large",
+      "inputs": [1000, 5000, 10000, 20000]
+    }
+  ]
+}

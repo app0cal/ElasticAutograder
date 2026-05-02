@@ -1,0 +1,23 @@
+# kubernetes job template for running a grader
+# backend should replace ${JOB_NAME}, ${IMAGE}, and ${SUBMISSION_CONFIGMAP} with appropriate values before creating the job
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: ${JOB_NAME}
+spec:
+  backoffLimit: 0
+  template:
+    spec:
+      restartPolicy: Never
+      containers:
+        - name: grader
+          image: ${IMAGE}
+          command: ["python", "/app/main.py"]
+          args: ["/work/submission.py", "/app/grader/manifest.json"]
+          volumeMounts:
+            - name: submission-volume
+              mountPath: /work
+      volumes:
+        - name: submission-volume
+          configMap:
+            name: ${SUBMISSION_CONFIGMAP}

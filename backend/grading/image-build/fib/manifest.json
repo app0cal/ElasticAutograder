@@ -1,0 +1,21 @@
+{
+  "entry_function": "fib",
+  "comparison": {
+    "mode": "exact"
+  },
+  "test_cases": [
+    { "name": "case_0", "args": [0], "expected": 0 },
+    { "name": "case_1", "args": [1], "expected": 1 },
+    { "name": "case_2", "args": [2], "expected": 1 },
+    { "name": "case_3", "args": [3], "expected": 2 },
+    { "name": "case_4", "args": [4], "expected": 3 },
+    { "name": "case_5", "args": [5], "expected": 5 },
+    { "name": "case_6", "args": [6], "expected": 8},
+    { "name": "case_7", "args": [7], "expected": 13},
+    { "name": "case_8", "args": [8], "expected": 21 },
+    { "name": "case_9", "args": [9], "expected": 34 },
+    { "name": "case_10", "args": [10], "expected": 55 },
+    { "name": "case_11", "args": [11], "expected": 89 },
+    { "name": "case_12", "args": [12], "expected": 144 }
+  ]
+}

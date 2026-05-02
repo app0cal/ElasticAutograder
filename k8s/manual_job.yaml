@@ -1,0 +1,24 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: grading-job-1
+spec:
+  backoffLimit: 0
+  template:
+    spec:
+      ttlSecondsAfterFinished: 300
+      backoffLimit: 0
+      restartPolicy: Never
+      containers:
+        - name: grader
+          image: ea-grader-fibbonaci:v1
+          imagePullPolicy: IfNotPresent
+          command: ["python", "/app/main.py"]
+          args: ["/work/submission.py", "/app/grader/manifest.json"]
+          volumeMounts:
+            - name: submission-volume
+              mountPath: /work
+      volumes:
+        - name: submission-volume
+          configMap:
+            name: submission-job-1

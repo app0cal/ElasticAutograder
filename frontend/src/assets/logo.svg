@@ -1,0 +1,20 @@
+<svg width="256" height="256" viewBox="0 0 256 256" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <!-- File body -->
+  <path
+    d="M48 24H144L208 88V208C208 221.255 197.255 232 184 232H72C58.7452 232 48 221.255 48 208V48C48 34.7452 58.7452 24 72 24H48Z"
+    fill="#F8FAFC"/>
+
+  <!-- Folded corner -->
+  <path
+    d="M144 24L208 88H168C154.745 88 144 77.2548 144 64V24Z"
+    fill="#CBD5E1"/>
+
+  <!-- Bigger lower-right check badge -->
+  <circle cx="178" cy="188" r="54" fill="#22C55E"/>
+  <path
+    d="M154 188L171 205L204 172"
+    stroke="white"
+    stroke-width="16"
+    stroke-linecap="round"
+    stroke-linejoin="round"/>
+</svg>

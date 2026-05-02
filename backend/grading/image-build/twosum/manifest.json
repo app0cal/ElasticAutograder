@@ -1,0 +1,48 @@
+{
+  "entry_function": "twoSum",
+  "comparison": {
+    "mode": "exact"
+  },
+  "test_cases": [
+    {
+      "name": "case_1",
+      "args": [[2, 7, 11, 15], 9],
+      "expected": [0, 1]
+    },
+    {
+      "name": "case_2",
+      "args": [[3, 2, 4], 6],
+      "expected": [1, 2]
+    },
+    {
+      "name": "case_3",
+      "args": [[8, 2, 4], 10],
+      "expected": [0, 1]
+    },
+    {
+      "name": "case_4",
+      "args": [[0,12,13,4], 25],
+      "expected": [1, 2]
+    },
+    {
+      "name": "case_5",
+      "args": [[3, 2, 4, 3], 6],
+      "expected": [1, 3]
+    },
+    {
+      "name": "case_6",
+      "args": [[9,13,29,1,2,1,2], 3],
+      "expected": [4, 5]
+    },
+    {
+      "name": "case_7",
+      "args": [[3, 2, 4], 1],
+      "expected": []
+    },
+    {
+      "name": "case_8",
+      "args": [[12,1,2,5,1,3,3,3], 6],
+      "expected": [1,3]
+    }
+  ]
+}

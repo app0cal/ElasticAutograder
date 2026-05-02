@@ -1,0 +1,12 @@
+name: TODO
+description: Feature to be completed at a later date.
+title: "[TODO]: "
+labels: ["enhancement"]
+body:
+  - type: textarea
+    id: todo
+    attributes:
+      label: What is your todo?
+      description: Add any relevant details, & try to be as specific as possible.
+    validations:
+      required: true

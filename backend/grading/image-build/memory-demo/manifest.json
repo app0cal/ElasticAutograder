@@ -1,0 +1,13 @@
+{
+  "entry_function": "stress_memory",
+  "comparison": {
+    "mode": "exact"
+  },
+  "test_cases": [
+    {
+      "name": "memory_smoke",
+      "args": [],
+      "expected": true
+    }
+  ]
+}

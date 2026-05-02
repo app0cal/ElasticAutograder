@@ -1,0 +1,221 @@
+.landing-page {
+  min-height: 100vh;
+  width: 100%;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 48px 24px 72px;
+  background: var(--bg);
+  color: var(--text);
+  text-align: center;
+}
+
+.landing-hero {
+  width: 100%;
+  max-width: 900px;
+  margin-top: 24px;
+}
+
+.landing-title {
+  font-size: 4rem;
+  font-weight: 800;
+  margin: 0 0 16px 0;
+  color: var(--accent);
+  line-height: 1.05;
+}
+
+.landing-subtitle {
+  font-size: 1.25rem;
+  color: var(--muted);
+  margin: 0 auto 48px;
+  max-width: 700px;
+  line-height: 1.5;
+}
+
+.landing-feature-grid {
+  display: flex;
+  gap: 24px;
+  margin-bottom: 48px;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+
+.landing-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 24px;
+  width: 220px;
+  box-sizing: border-box;
+}
+
+.landing-card-icon {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  color: var(--accent);
+  margin-bottom: 12px;
+}
+
+.landing-card h3 {
+  margin: 0 0 8px 0;
+  font-size: 1.2rem;
+}
+
+.landing-card p {
+  color: var(--muted);
+  margin: 0;
+  font-size: 0.95rem;
+  line-height: 1.5;
+}
+
+.landing-actions {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+}
+
+.landing-primary-button {
+  font-size: 1.1rem;
+  padding: 14px 32px;
+}
+
+.landing-more-details {
+  font-size: 0.95rem;
+  color: var(--muted);
+  text-decoration: none;
+  transition: color 0.2s ease, transform 0.2s ease;
+}
+
+.landing-more-details:hover {
+  color: var(--text);
+  transform: translateY(1px);
+}
+
+.landing-section {
+  width: 100%;
+  max-width: 1000px;
+  margin-top: 72px;
+}
+
+.landing-section-title {
+  font-size: 2rem;
+  font-weight: 700;
+  margin: 0 0 16px 0;
+  color: var(--text);
+}
+
+.workflow-grid {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 20px;
+  margin-top: 24px;
+}
+
+.workflow-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 24px;
+  width: 220px;
+  box-sizing: border-box;
+  text-align: left;
+}
+
+.workflow-step {
+  width: 32px;
+  height: 32px;
+  border-radius: 999px;
+  background: var(--accent);
+  color: white;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 700;
+  margin-bottom: 12px;
+}
+
+.workflow-card h3 {
+  margin: 0 0 8px 0;
+  font-size: 1.1rem;
+}
+
+.workflow-card p {
+  color: var(--muted);
+  margin: 0;
+  font-size: 0.95rem;
+  line-height: 1.5;
+}
+
+.graders-grid {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 20px;
+  margin-top: 24px;
+}
+
+.grader-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 24px;
+  width: 280px;
+  box-sizing: border-box;
+  text-align: left;
+}
+
+.grader-card h3 {
+  margin: 0 0 8px 0;
+  font-size: 1.1rem;
+}
+
+.grader-card p {
+  color: var(--muted);
+  margin: 0;
+  font-size: 0.95rem;
+  line-height: 1.5;
+}
+
+@media (max-width: 900px) {
+  .landing-title {
+    font-size: 3.2rem;
+  }
+
+  .landing-subtitle {
+    font-size: 1.1rem;
+    margin-bottom: 40px;
+  }
+}
+
+@media (max-width: 600px) {
+  .landing-page {
+    padding: 36px 16px 56px;
+  }
+
+  .landing-title {
+    font-size: 2.5rem;
+  }
+
+  .landing-subtitle {
+    font-size: 1rem;
+  }
+
+  .landing-card,
+  .workflow-card,
+  .grader-card {
+    width: 100%;
+    max-width: 340px;
+  }
+
+  .landing-section {
+    margin-top: 56px;
+  }
+
+  .landing-section-title {
+    font-size: 1.7rem;
+  }
+}

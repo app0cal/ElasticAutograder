@@ -1,0 +1,62 @@
+{
+  "graders": [
+    {
+      "key": "fib",
+      "label": "Fibonacci",
+      "imageName": "ea-grader-fibbonaci:v1",
+      "manifestPath": "/app/grader/manifest.json",
+      "summary": "Return the nth Fibonacci number from the classic sequence that starts at 0 and 1.",
+      "details": [
+        "Fibonacci numbers are built by summing the previous two values in the sequence.",
+        "Assume the sequence begins with 0 and 1 when reasoning about expected outputs, so F(0) = 0 and F(1) = 1.",
+        "Your solution should return a single numeric result for the requested input n."
+      ]
+    },
+    {
+      "key": "fib-performance",
+      "label": "Fibonacci Performance",
+      "imageName": "ea-grader-fib-performance:v1",
+      "manifestPath": "/app/grader/manifest.json",
+      "summary": "Return Fibonacci numbers efficiently enough for larger generated inputs.",
+      "details": [
+        "Use an iterative or dynamic programming approach that avoids exponential recursion.",
+        "The grader includes generated medium inputs and much larger inputs compared to the regular Fibonacci problem.",
+        "Small hardcoded answer tables are unlikely to pass the generated performance cases."
+      ],
+      "timeoutSeconds": 6,
+      "cpuRequestMilli": 100,
+      "cpuLimitMilli": 500,
+      "memoryRequestMb": 64,
+      "memoryLimitMb": 128
+    },
+    {
+      "key": "twosum",
+      "label": "Two Sum",
+      "imageName": "ea-grader-twosum:v1",
+      "manifestPath": "/app/grader/manifest.json",
+      "summary": "Find the two indices whose values add up to the target.",
+      "details": [
+        "The function should inspect the provided list of numbers and locate the pair that reaches the target value.",
+        "Return the indices of the matching elements in the expected output format for the grader.",
+        "Assume exactly one valid answer exists for the grading cases unless the problem statement says otherwise."
+      ]
+    },
+    {
+      "key": "memory-demo",
+      "label": "Memory Limit Demo",
+      "imageName": "ea-grader-memory-demo:v1",
+      "manifestPath": "/app/grader/manifest.json",
+      "summary": "Return True to pass the test, but used to demonstrate Kubernetes memory-limit failures with a small, isolated stress test.",
+      "details": [
+        "The passing submission returns immediately with very little memory.",
+        "The memory stress submission intentionally allocates until the container is OOM-killed.",
+        "Use this grader when you want to see a RESOURCE_LIMIT failure separate from timeout behavior."
+      ],
+      "timeoutSeconds": 30,
+      "cpuRequestMilli": 100,
+      "cpuLimitMilli": 500,
+      "memoryRequestMb": 64,
+      "memoryLimitMb": 64
+    }
+  ]
+}
