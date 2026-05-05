@@ -1,7 +1,11 @@
+import { getMockIdentityHeaders } from "./mock_identity";
+
 const API_BASE = "http://localhost:8080/api";
 
 export async function fetchRecentJobs() {
-  const res = await fetch(`${API_BASE}/jobs/recent`);
+  const res = await fetch(`${API_BASE}/jobs/recent`, {
+    headers: getMockIdentityHeaders()
+  });
 
   if (!res.ok) {
     throw new Error(`Failed to fetch jobs: ${res.status}`);
@@ -11,7 +15,9 @@ export async function fetchRecentJobs() {
 }
 
 export async function fetchGraders() {
-  const res = await fetch(`${API_BASE}/graders`);
+  const res = await fetch(`${API_BASE}/graders`, {
+    headers: getMockIdentityHeaders()
+  });
 
   if (!res.ok) {
     throw new Error(`Failed to fetch graders: ${res.status}`);
@@ -21,7 +27,9 @@ export async function fetchGraders() {
 }
 
 export async function fetchJobById(jobId) {
-  const res = await fetch(`${API_BASE}/jobs/${jobId}`);
+  const res = await fetch(`${API_BASE}/jobs/${jobId}`, {
+    headers: getMockIdentityHeaders()
+  });
 
   if (!res.ok) {
     throw new Error(`Failed to fetch job ${jobId}: ${res.status}`);

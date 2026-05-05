@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { downloadResults } from "../api/download_file";
 import { fetchGraders, fetchJobById } from "../api/jobs";
+import { subscribeToMockIdentityChanges } from "../api/mock_identity";
 
 const REFRESH_INTERVAL = 1000;
 const ACTIVE_STATUSES = new Set(["QUEUED", "RUNNING"]);
@@ -78,12 +79,17 @@ export default function JobDetailsPage() {
 
     loadGraders();
     loadJob(true);
+    const unsubscribe = subscribeToMockIdentityChanges(() => {
+      loadGraders();
+      loadJob(true);
+    });
 
     return () => {
       isMounted = false;
       if (intervalId) {
         window.clearInterval(intervalId);
       }
+      unsubscribe();
     };
   }, [jobId]);
 
@@ -204,6 +210,8 @@ export default function JobDetailsPage() {
             <div className="job-details-list">
               <DetailRow label="Grader Image" value={formatValue(job.graderImage)} />
               <DetailRow label="Submitted File" value={formatValue(job.originalFilename)} />
+              <DetailRow label="Institution" value={formatValue(job.institutionId)} />
+              <DetailRow label="Submitted By" value={formatValue(job.submittedBy)} />
               <DetailRow label="Kubernetes Job" value={formatValue(job.k8sJobName)} />
             </div>
           </section>

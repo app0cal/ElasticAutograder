@@ -2,6 +2,8 @@ import { Link, useNavigate } from "react-router-dom";
 import { useEffect, useRef, useState } from "react";
 import { uploadFile } from "../api/upload_file";
 import { fetchGraders } from "../api/jobs";
+import MockIdentityPanel from "../components/MockIdentityPanel";
+import { subscribeToMockIdentityChanges } from "../api/mock_identity";
 
 export default function SubmitJobPage() {
   const [file, setFile] = useState(null);
@@ -32,6 +34,10 @@ export default function SubmitJobPage() {
     };
 
     loadGraders();
+    return subscribeToMockIdentityChanges(() => {
+      setSelectedGrader("");
+      loadGraders();
+    });
   }, []);
 
   const handleFileChange = (e) => {
@@ -222,6 +228,9 @@ export default function SubmitJobPage() {
           </section>
 
           <aside className="submit-console-card submit-assignment-panel">
+            <MockIdentityPanel />
+            <div className="submit-divider" />
+
             <div className="submit-section-heading submit-assignment-heading">
               <span className="submit-section-label">Assignment</span>
               <h2>{selectedGraderInfo ? selectedGraderInfo.label : "Select a grader"}</h2>

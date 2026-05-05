@@ -34,7 +34,7 @@ class Fabric8GradingOrchestratorTest {
     void runJobInKubernetes_nullGraderType_throwsIllegalArgumentException() {
         IllegalArgumentException exception = assertThrows(
                 IllegalArgumentException.class,
-                () -> orchestrator.runJobInKubernetes(1L, "submission.py", null)
+                () -> orchestrator.runJobInKubernetes(1L, "submission.py", null, "local")
         );
 
         assertEquals("graderType is required.", exception.getMessage());
@@ -48,7 +48,7 @@ class Fabric8GradingOrchestratorTest {
     void runJobInKubernetes_blankGraderType_throwsIllegalArgumentException() {
         IllegalArgumentException exception = assertThrows(
                 IllegalArgumentException.class,
-                () -> orchestrator.runJobInKubernetes(1L, "submission.py", "   ")
+                () -> orchestrator.runJobInKubernetes(1L, "submission.py", "   ", "local")
         );
 
         assertEquals("graderType is required.", exception.getMessage());
@@ -65,7 +65,7 @@ class Fabric8GradingOrchestratorTest {
 
         IllegalArgumentException exception = assertThrows(
                 IllegalArgumentException.class,
-                () -> orchestrator.runJobInKubernetes(1L, "submission.py", "unknown")
+                () -> orchestrator.runJobInKubernetes(1L, "submission.py", "unknown", "local")
         );
 
         assertTrue(exception.getMessage().contains("Unknown grader key"));
@@ -133,11 +133,20 @@ class Fabric8GradingOrchestratorTest {
      */
     @Test
     void buildSubmissionConfigMap_setsMetadataLabelsAndSubmissionData() {
-        var configMap = orchestrator.buildSubmissionConfigMap(54L, "def fib(n): return n");
+        var configMap = orchestrator.buildSubmissionConfigMap(
+                54L,
+                "def fib(n): return n",
+                "fib",
+                "university-a"
+        );
 
         assertEquals("submission-job-54", configMap.getMetadata().getName());
         assertEquals("elastic-autograder", configMap.getMetadata().getLabels().get("app"));
+        assertEquals("grader", configMap.getMetadata().getLabels().get("component"));
         assertEquals("54", configMap.getMetadata().getLabels().get("job-id"));
+        assertEquals("university-a", configMap.getMetadata().getLabels().get("institution-id"));
+        assertEquals("fib", configMap.getMetadata().getLabels().get("grader-type"));
+        assertEquals("university-a", configMap.getMetadata().getAnnotations().get("elastic-autograder/institution-id"));
         assertEquals("def fib(n): return n", configMap.getData().get("submission.py"));
     }
 
@@ -147,16 +156,21 @@ class Fabric8GradingOrchestratorTest {
      */
     @Test
     void buildGradingJob_setsExpectedKubernetesSpec() {
-        var job = orchestrator.buildGradingJob(55L, createGrader());
+        var job = orchestrator.buildGradingJob(55L, createGrader(), "university-a");
 
         assertEquals("grading-job-55", job.getMetadata().getName());
         assertEquals("elastic-autograder", job.getMetadata().getLabels().get("app"));
+        assertEquals("grader", job.getMetadata().getLabels().get("component"));
         assertEquals("55", job.getMetadata().getLabels().get("job-id"));
+        assertEquals("university-a", job.getMetadata().getLabels().get("institution-id"));
+        assertEquals("fib", job.getMetadata().getLabels().get("grader-type"));
+        assertEquals("fib", job.getMetadata().getAnnotations().get("elastic-autograder/grader-type"));
         assertEquals(Integer.valueOf(0), job.getSpec().getBackoffLimit());
         assertEquals(Integer.valueOf(300), job.getSpec().getTtlSecondsAfterFinished());
         assertEquals(Long.valueOf(10), job.getSpec().getActiveDeadlineSeconds());
 
         var podSpec = job.getSpec().getTemplate().getSpec();
+        assertEquals("university-a", job.getSpec().getTemplate().getMetadata().getLabels().get("institution-id"));
         assertEquals("Never", podSpec.getRestartPolicy());
         assertEquals("submission-volume", podSpec.getVolumes().get(0).getName());
         assertEquals("submission-job-55", podSpec.getVolumes().get(0).getConfigMap().getName());
@@ -189,7 +203,7 @@ class Fabric8GradingOrchestratorTest {
                 new TestableFabric8GradingOrchestrator(kubernetesClient, graderRegistry);
         testOrchestrator.logs = "{\"status\":\"SUCCEEDED\",\"tests_passed\":2,\"tests_total\":2}";
 
-        var result = testOrchestrator.runJobInKubernetes(22L, "\"batch-1/submission.py\"", "fib");
+        var result = testOrchestrator.runJobInKubernetes(22L, "\"batch-1/submission.py\"", "fib", "local");
 
         assertEquals("SUCCEEDED", result.get("status").asText());
         assertEquals(2, result.get("tests_passed").asInt());
@@ -263,7 +277,7 @@ class Fabric8GradingOrchestratorTest {
 
         GradingFailureException exception = assertThrows(
                 GradingFailureException.class,
-                () -> testOrchestrator.runJobInKubernetes(23L, "submission.py", "fib")
+                () -> testOrchestrator.runJobInKubernetes(23L, "submission.py", "fib", "local")
         );
 
         assertEquals("submission-job-23", testOrchestrator.deletedConfigMapName);
@@ -297,13 +311,22 @@ class Fabric8GradingOrchestratorTest {
         }
 
         @Override
-        public io.fabric8.kubernetes.api.model.ConfigMap createSubmissionConfigMap(Long jobId, String fileName) {
+        public io.fabric8.kubernetes.api.model.ConfigMap createSubmissionConfigMap(
+                Long jobId,
+                String fileName,
+                String graderType,
+                String institutionId
+        ) {
             createdConfigMapForFile = fileName;
             return new io.fabric8.kubernetes.api.model.ConfigMap();
         }
 
         @Override
-        public io.fabric8.kubernetes.api.model.batch.v1.Job createGradingJob(Long jobId, GraderDefinition grader) {
+        public io.fabric8.kubernetes.api.model.batch.v1.Job createGradingJob(
+                Long jobId,
+                GraderDefinition grader,
+                String institutionId
+        ) {
             createdJob = true;
             return new io.fabric8.kubernetes.api.model.batch.v1.Job();
         }

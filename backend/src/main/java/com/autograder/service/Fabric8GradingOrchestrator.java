@@ -1,5 +1,7 @@
 package com.autograder.service;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.annotation.Primary;
 import org.springframework.stereotype.Service;
@@ -10,10 +12,12 @@ import io.fabric8.kubernetes.api.model.Pod;
 import io.fabric8.kubernetes.api.model.PodList;
 import io.fabric8.kubernetes.api.model.batch.v1.Job;
 import io.fabric8.kubernetes.api.model.batch.v1.JobBuilder;
+import io.fabric8.kubernetes.api.model.batch.v1.JobList;
 import io.fabric8.kubernetes.client.KubernetesClient;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
 
+import com.autograder.config.KubernetesGradingProperties;
 import com.autograder.model.FailureReason;
 import com.autograder.model.GraderDefinition;
 import com.autograder.service.submission.LocalSubmissionStorageService;
@@ -34,14 +38,15 @@ import com.autograder.service.submission.SubmissionStorageService;
 @Service
 public class Fabric8GradingOrchestrator implements GradingOrchestrator {
 
+    private static final Logger logger = LoggerFactory.getLogger(Fabric8GradingOrchestrator.class);
+
     // Local JSON mapper used to parse grader output returned from pod logs.
     private final ObjectMapper objectMapper = new ObjectMapper();
-
-    private static final String NAMESPACE = "default";
 
     private final KubernetesClient kubernetesClient;
     private final GraderRegistry graderRegistry;
     private final SubmissionStorageService submissionStorageService;
+    private final KubernetesGradingProperties kubernetesProperties;
 
     /**
      * Constructor for Fabric8GradingOrchestrator with: 
@@ -52,18 +57,20 @@ public class Fabric8GradingOrchestrator implements GradingOrchestrator {
      * @param graderRegistry registry used to resolve grader metadata from the selected grader key
      */
     public Fabric8GradingOrchestrator(KubernetesClient kubernetesClient, GraderRegistry graderRegistry) {
-        this(kubernetesClient, graderRegistry, new LocalSubmissionStorageService());
+        this(kubernetesClient, graderRegistry, new LocalSubmissionStorageService(), new KubernetesGradingProperties());
     }
 
     @Autowired
     public Fabric8GradingOrchestrator(
             KubernetesClient kubernetesClient,
             GraderRegistry graderRegistry,
-            SubmissionStorageService submissionStorageService
+            SubmissionStorageService submissionStorageService,
+            KubernetesGradingProperties kubernetesProperties
     ) {
         this.kubernetesClient = kubernetesClient;
         this.graderRegistry = graderRegistry;
         this.submissionStorageService = submissionStorageService;
+        this.kubernetesProperties = kubernetesProperties;
     }
 
     /**
@@ -85,7 +92,7 @@ public class Fabric8GradingOrchestrator implements GradingOrchestrator {
      * @throws Exception ONLY if job creation, execution, log parsing, or cleanup fails
      */
     @Override
-    public JsonNode runJobInKubernetes(Long jobId, String fileName, String graderType) throws Exception {
+    public JsonNode runJobInKubernetes(Long jobId, String fileName, String graderType, String institutionId) throws Exception {
         if (graderType == null || graderType.isBlank()) {
             throw new IllegalArgumentException("graderType is required.");
         }
@@ -95,8 +102,8 @@ public class Fabric8GradingOrchestrator implements GradingOrchestrator {
         String configMapName = "submission-job-" + jobId;
 
         try{
-            createSubmissionConfigMap(jobId, cleanedFileName);
-            createGradingJob(jobId,grader);
+            createSubmissionConfigMap(jobId, cleanedFileName, graderType, institutionId);
+            createGradingJob(jobId, grader, institutionId);
             waitForJobCompletion(jobId,grader.getTimeoutSeconds());
             String logs = getJobLogs(jobId);
 
@@ -118,8 +125,7 @@ public class Fabric8GradingOrchestrator implements GradingOrchestrator {
             try{
                 deleteSubmissionConfigMap(configMapName);
             } catch (Exception e) {
-                // Log the error but don't fail the whole process if cleanup fails
-                System.err.println("Failed to delete ConfigMap " + configMapName + ": " + e.getMessage());
+                logger.warn("Failed to delete ConfigMap {}: {}", configMapName, e.getMessage());
             }
         }
     }
@@ -136,24 +142,48 @@ public class Fabric8GradingOrchestrator implements GradingOrchestrator {
      * @throws Exception if the submission file cannot be found or read
      */
     public ConfigMap createSubmissionConfigMap(Long jobId, String fileName) throws Exception {
+        return createSubmissionConfigMap(jobId, fileName, "unknown", "unknown");
+    }
+
+    public ConfigMap createSubmissionConfigMap(
+            Long jobId,
+            String fileName,
+            String graderType,
+            String institutionId
+    ) throws Exception {
         String cleanedFileName = submissionStorageService.sanitizeSubmissionKey(fileName);
         String submissionContents = submissionStorageService.readSubmission(cleanedFileName);
-        ConfigMap configMap = buildSubmissionConfigMap(jobId, submissionContents);
+        ConfigMap configMap = buildSubmissionConfigMap(jobId, submissionContents, graderType, institutionId);
 
         return kubernetesClient.configMaps()
-                .inNamespace(NAMESPACE)
+                .inNamespace(kubernetesProperties.getNamespace())
                 .resource(configMap)
                 .createOrReplace();
     }
 
     ConfigMap buildSubmissionConfigMap(Long jobId, String submissionContents) {
+        return buildSubmissionConfigMap(jobId, submissionContents, "unknown", "unknown");
+    }
+
+    ConfigMap buildSubmissionConfigMap(
+            Long jobId,
+            String submissionContents,
+            String graderType,
+            String institutionId
+    ) {
         String configMapName = "submission-job-" + jobId;
 
         return new ConfigMapBuilder()
                 .withNewMetadata()
                     .withName(configMapName)
                     .addToLabels("app", "elastic-autograder")
+                    .addToLabels("component", "grader")
                     .addToLabels("job-id", String.valueOf(jobId))
+                    .addToLabels("institution-id", toLabelValue(institutionId))
+                    .addToLabels("grader-type", toLabelValue(graderType))
+                    .addToAnnotations("elastic-autograder/job-id", String.valueOf(jobId))
+                    .addToAnnotations("elastic-autograder/institution-id", institutionId)
+                    .addToAnnotations("elastic-autograder/grader-type", graderType)
                 .endMetadata()
                 .addToData("submission.py", submissionContents)
                 .build();
@@ -174,18 +204,27 @@ public class Fabric8GradingOrchestrator implements GradingOrchestrator {
      * @return created or replaced Kubernetes Job resource
      */
     public Job createGradingJob(Long jobId, GraderDefinition grader) {
-        Job job = buildGradingJob(jobId, grader);
+        return createGradingJob(jobId, grader, "unknown");
+    }
 
-        // IMPORTANT NOTE: this assumes default namespace for k8s cluster is left defaulted NOT empty, this can cause issues 
+    public Job createGradingJob(Long jobId, GraderDefinition grader, String institutionId) {
+        enforceMaxActiveJobs();
+        Job job = buildGradingJob(jobId, grader, institutionId);
+
         return kubernetesClient.batch().v1().jobs()
-                .inNamespace(NAMESPACE)
+                .inNamespace(kubernetesProperties.getNamespace())
                 .resource(job)
                 .createOrReplace();
     }
 
     Job buildGradingJob(Long jobId, GraderDefinition grader) {
+        return buildGradingJob(jobId, grader, "unknown");
+    }
+
+    Job buildGradingJob(Long jobId, GraderDefinition grader, String institutionId) {
         String jobName = "grading-job-" + jobId;
         String configMapName = "submission-job-" + jobId;
+        String graderType = grader.getKey();
 
         // important note for understanding this, this basically is just a yaml file so it'll look crazy unless you understand k8s yaml structure
         // Template is under backend/grading/graders if you want a reference to how this should look in yaml format but this as pretty as it gets
@@ -194,16 +233,28 @@ public class Fabric8GradingOrchestrator implements GradingOrchestrator {
             .withNewMetadata()
                 .withName(jobName)
                 .addToLabels("app", "elastic-autograder")
+                .addToLabels("component", "grader")
                 .addToLabels("job-id", String.valueOf(jobId))
+                .addToLabels("institution-id", toLabelValue(institutionId))
+                .addToLabels("grader-type", toLabelValue(graderType))
+                .addToAnnotations("elastic-autograder/job-id", String.valueOf(jobId))
+                .addToAnnotations("elastic-autograder/institution-id", institutionId)
+                .addToAnnotations("elastic-autograder/grader-type", graderType)
             .endMetadata()
             .withNewSpec()
-                .withTtlSecondsAfterFinished(300)
+                .withTtlSecondsAfterFinished(kubernetesProperties.getJobTtlSeconds())
                 .withBackoffLimit(0)
                 .withActiveDeadlineSeconds(grader.getTimeoutSeconds().longValue())
                 .withNewTemplate()
                     .withNewMetadata()
                         .addToLabels("app", "elastic-autograder")
+                        .addToLabels("component", "grader")
                         .addToLabels("job-id", String.valueOf(jobId))
+                        .addToLabels("institution-id", toLabelValue(institutionId))
+                        .addToLabels("grader-type", toLabelValue(graderType))
+                        .addToAnnotations("elastic-autograder/job-id", String.valueOf(jobId))
+                        .addToAnnotations("elastic-autograder/institution-id", institutionId)
+                        .addToAnnotations("elastic-autograder/grader-type", graderType)
                     .endMetadata()
                     .withNewSpec()
                         .withRestartPolicy("Never")
@@ -255,7 +306,7 @@ public class Fabric8GradingOrchestrator implements GradingOrchestrator {
             Job job = kubernetesClient.batch()
                     .v1()
                     .jobs()
-                    .inNamespace(NAMESPACE)
+                    .inNamespace(kubernetesProperties.getNamespace())
                     .withName(jobName)
                     .get();
 
@@ -283,7 +334,7 @@ public class Fabric8GradingOrchestrator implements GradingOrchestrator {
             // alternatively punish user/developer using this by changing to 20000000000
             // This is mostly the amount of time you want to wait for Job Completion
             // in ms 
-            Thread.sleep(1000);
+            Thread.sleep(kubernetesProperties.getPollInterval().toMillis());
         }
 
         throw new IllegalStateException("Timed out waiting for job completion: " + jobName);
@@ -304,7 +355,7 @@ public class Fabric8GradingOrchestrator implements GradingOrchestrator {
         String jobIdLabel = String.valueOf(jobId);
 
         PodList podList = kubernetesClient.pods()
-                .inNamespace(NAMESPACE)
+                .inNamespace(kubernetesProperties.getNamespace())
                 .withLabel("app", "elastic-autograder")
                 .withLabel("job-id", jobIdLabel)
                 .list();
@@ -322,7 +373,7 @@ public class Fabric8GradingOrchestrator implements GradingOrchestrator {
         String podName = pod.getMetadata().getName();
 
         String logs = kubernetesClient.pods()
-                .inNamespace(NAMESPACE)
+                .inNamespace(kubernetesProperties.getNamespace())
                 .withName(podName)
                 .getLog();
 
@@ -347,7 +398,7 @@ public class Fabric8GradingOrchestrator implements GradingOrchestrator {
         String jobIdLabel = String.valueOf(jobId);
 
         PodList podList = kubernetesClient.pods()
-                .inNamespace(NAMESPACE)
+                .inNamespace(kubernetesProperties.getNamespace())
                 .withLabel("app", "elastic-autograder")
                 .withLabel("job-id", jobIdLabel)
                 .list();
@@ -395,7 +446,7 @@ public class Fabric8GradingOrchestrator implements GradingOrchestrator {
         String jobIdLabel = String.valueOf(jobId);
 
         PodList podList = kubernetesClient.pods()
-                .inNamespace(NAMESPACE)
+                .inNamespace(kubernetesProperties.getNamespace())
                 .withLabel("app", "elastic-autograder")
                 .withLabel("job-id", jobIdLabel)
                 .list();
@@ -438,9 +489,56 @@ public class Fabric8GradingOrchestrator implements GradingOrchestrator {
     // Cleanup method to delete ConfigMap and Job after completion
     public void deleteSubmissionConfigMap(String configMapName) {
         kubernetesClient.configMaps()
-                .inNamespace(NAMESPACE)
+                .inNamespace(kubernetesProperties.getNamespace())
                 .withName(configMapName)
                 .delete();
+    }
+
+    private void enforceMaxActiveJobs() {
+        Integer maxActiveJobs = kubernetesProperties.getMaxActiveJobs();
+        if (maxActiveJobs == null || maxActiveJobs <= 0) {
+            return;
+        }
+
+        int activeJobs = countActiveGraderJobs();
+        if (activeJobs >= maxActiveJobs) {
+            throw new IllegalStateException("Maximum active Kubernetes grading jobs reached: " + maxActiveJobs);
+        }
+    }
+
+    private int countActiveGraderJobs() {
+        JobList jobList = kubernetesClient.batch().v1().jobs()
+                .inNamespace(kubernetesProperties.getNamespace())
+                .withLabel("app", "elastic-autograder")
+                .withLabel("component", "grader")
+                .list();
+
+        if (jobList == null || jobList.getItems() == null) {
+            return 0;
+        }
+
+        return (int) jobList.getItems().stream()
+                .filter(this::isActiveJob)
+                .count();
+    }
+
+    private boolean isActiveJob(Job job) {
+        return job.getStatus() != null
+                && job.getStatus().getActive() != null
+                && job.getStatus().getActive() > 0;
+    }
+
+    private String toLabelValue(String value) {
+        if (value == null || value.isBlank()) {
+            return "unknown";
+        }
+
+        String cleaned = value.trim().replaceAll("[^A-Za-z0-9_.-]", "-");
+        if (cleaned.isBlank()) {
+            return "unknown";
+        }
+
+        return cleaned.length() <= 63 ? cleaned : cleaned.substring(0, 63);
     }
 
     private FailureReason classifyFailure(Exception err) {

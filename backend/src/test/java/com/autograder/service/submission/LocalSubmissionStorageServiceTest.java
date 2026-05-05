@@ -18,6 +18,8 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.mock.web.MockMultipartFile;
 
+import com.autograder.service.identity.RequestIdentity;
+
 class LocalSubmissionStorageServiceTest {
 
     private final LocalSubmissionStorageService storageService = new LocalSubmissionStorageService();
@@ -40,7 +42,7 @@ class LocalSubmissionStorageServiceTest {
 
     @Test
     void storeSingle_validFile_storesSubmission() throws Exception {
-        StoredSubmission submission = storageService.storeSingle(file("submission.py", "print('hello')"));
+        StoredSubmission submission = storageService.storeSingle(file("submission.py", "print('hello')"), identity());
 
         assertEquals("submission.py", submission.key());
         assertEquals("submission.py", submission.originalFileName());
@@ -49,11 +51,11 @@ class LocalSubmissionStorageServiceTest {
 
     @Test
     void storeSingle_duplicateFile_rejectsUpload() throws Exception {
-        storageService.storeSingle(file("duplicate.py", "print('hello')"));
+        storageService.storeSingle(file("duplicate.py", "print('hello')"), identity());
 
         IllegalArgumentException exception = assertThrows(
                 IllegalArgumentException.class,
-                () -> storageService.storeSingle(file("duplicate.py", "print('again')"))
+                () -> storageService.storeSingle(file("duplicate.py", "print('again')"), identity())
         );
 
         assertEquals("File with this name already exists.", exception.getMessage());
@@ -63,7 +65,7 @@ class LocalSubmissionStorageServiceTest {
     void storeSingle_pathTraversal_rejectsUpload() {
         IllegalArgumentException exception = assertThrows(
                 IllegalArgumentException.class,
-                () -> storageService.storeSingle(file("../secret.py", "print('bad')"))
+                () -> storageService.storeSingle(file("../secret.py", "print('bad')"), identity())
         );
 
         assertEquals("Invalid file name.", exception.getMessage());
@@ -76,7 +78,7 @@ class LocalSubmissionStorageServiceTest {
                 "nested/beta.py", "print('beta')"
         ));
 
-        List<StoredSubmission> submissions = storageService.storeZip(zip);
+        List<StoredSubmission> submissions = storageService.storeZip(zip, identity());
 
         List<String> keys = submissions.stream().map(StoredSubmission::key).sorted().toList();
         assertEquals(List.of("batch.zip/alpha.py", "batch.zip/nested/beta.py"), keys);
@@ -93,7 +95,7 @@ class LocalSubmissionStorageServiceTest {
 
         IllegalArgumentException exception = assertThrows(
                 IllegalArgumentException.class,
-                () -> storageService.storeZip(zip)
+                () -> storageService.storeZip(zip, identity())
         );
 
         assertEquals("Zip archive contains duplicate file names: duplicate.py", exception.getMessage());
@@ -104,7 +106,7 @@ class LocalSubmissionStorageServiceTest {
     void storeZip_emptyArchive_rejectsUpload() throws Exception {
         IllegalArgumentException exception = assertThrows(
                 IllegalArgumentException.class,
-                () -> storageService.storeZip(zipFile("empty.zip", Map.of()))
+                () -> storageService.storeZip(zipFile("empty.zip", Map.of()), identity())
         );
 
         assertEquals("Zip archive does not contain any files.", exception.getMessage());
@@ -114,7 +116,7 @@ class LocalSubmissionStorageServiceTest {
     void storeZip_pathTraversal_rejectsArchive() throws Exception {
         IllegalArgumentException exception = assertThrows(
                 IllegalArgumentException.class,
-                () -> storageService.storeZip(zipFile("unsafe.zip", Map.of("../secret.py", "print('bad')")))
+                () -> storageService.storeZip(zipFile("unsafe.zip", Map.of("../secret.py", "print('bad')")), identity())
         );
 
         assertEquals("Zip archive contains an invalid file path.", exception.getMessage());
@@ -134,6 +136,10 @@ class LocalSubmissionStorageServiceTest {
 
     private MockMultipartFile file(String name, String contents) {
         return new MockMultipartFile("file", name, "text/plain", contents.getBytes());
+    }
+
+    private RequestIdentity identity() {
+        return RequestIdentity.localAnonymous();
     }
 
     private MockMultipartFile zipFile(String name, Map<String, String> entries) throws Exception {

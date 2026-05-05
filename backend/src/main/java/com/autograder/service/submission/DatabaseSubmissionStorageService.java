@@ -19,6 +19,7 @@ import org.springframework.web.multipart.MultipartFile;
 
 import com.autograder.model.Submission;
 import com.autograder.repository.SubmissionRepository;
+import com.autograder.service.identity.RequestIdentity;
 
 /**
  * Postgres-backed submission storage shared by backend and worker pods.
@@ -45,9 +46,9 @@ public class DatabaseSubmissionStorageService implements SubmissionStorageServic
      */
     @Override
     @Transactional(rollbackFor = Exception.class)
-    public StoredSubmission storeSingle(MultipartFile file) throws IOException {
+    public StoredSubmission storeSingle(MultipartFile file, RequestIdentity identity) throws IOException {
         String fileName = sanitizeFileName(file.getOriginalFilename());
-        return saveSubmission(fileName, file.getContentType(), file.getBytes());
+        return saveSubmission(fileName, file.getContentType(), file.getBytes(), identity);
     }
 
     /**
@@ -59,7 +60,7 @@ public class DatabaseSubmissionStorageService implements SubmissionStorageServic
      */
     @Override
     @Transactional(rollbackFor = Exception.class)
-    public List<StoredSubmission> storeZip(MultipartFile file) throws IOException {
+    public List<StoredSubmission> storeZip(MultipartFile file, RequestIdentity identity) throws IOException {
         List<StoredSubmission> submissions = new ArrayList<>();
 
         try (ZipInputStream zipInputStream = new ZipInputStream(file.getInputStream())) {
@@ -79,7 +80,7 @@ public class DatabaseSubmissionStorageService implements SubmissionStorageServic
                     throw new IllegalArgumentException("Zip archive contains duplicate file names: " + baseName);
                 }
 
-                submissions.add(saveSubmission(baseName, DEFAULT_CONTENT_TYPE, readEntryBytes(zipInputStream)));
+                submissions.add(saveSubmission(baseName, DEFAULT_CONTENT_TYPE, readEntryBytes(zipInputStream), identity));
                 zipInputStream.closeEntry();
             }
         }
@@ -159,7 +160,12 @@ public class DatabaseSubmissionStorageService implements SubmissionStorageServic
         delete(submissionKey);
     }
 
-    private StoredSubmission saveSubmission(String originalFileName, String contentType, byte[] bytes) {
+    private StoredSubmission saveSubmission(
+            String originalFileName,
+            String contentType,
+            byte[] bytes,
+            RequestIdentity identity
+    ) {
         UUID storageKey = UUID.randomUUID();
         String content = new String(bytes, StandardCharsets.UTF_8);
         String resolvedContentType = contentType == null || contentType.isBlank()
@@ -171,7 +177,9 @@ public class DatabaseSubmissionStorageService implements SubmissionStorageServic
                 originalFileName,
                 content,
                 resolvedContentType,
-                (long) bytes.length
+                (long) bytes.length,
+                identity.institution(),
+                identity.user()
         );
         Submission savedSubmission = submissionRepository.save(submission);
         return new StoredSubmission(savedSubmission.getId(), STORAGE_KEY_PREFIX + storageKey, originalFileName);

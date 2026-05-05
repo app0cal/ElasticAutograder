@@ -5,6 +5,8 @@ import java.util.List;
 
 import org.springframework.web.multipart.MultipartFile;
 
+import com.autograder.service.identity.RequestIdentity;
+
 /**
  * Storage boundary for staged submissions.
  *
@@ -20,7 +22,7 @@ public interface SubmissionStorageService {
      * @return logical reference to the stored submission
      * @throws IOException if bytes cannot be written
      */
-    StoredSubmission storeSingle(MultipartFile file) throws IOException;
+    StoredSubmission storeSingle(MultipartFile file, RequestIdentity identity) throws IOException;
 
     /**
      * Extracts a zip upload into a batch directory and returns one logical
@@ -30,7 +32,7 @@ public interface SubmissionStorageService {
      * @return stored submissions extracted from the archive
      * @throws IOException if the archive cannot be read or written
      */
-    List<StoredSubmission> storeZip(MultipartFile file) throws IOException;
+    List<StoredSubmission> storeZip(MultipartFile file, RequestIdentity identity) throws IOException;
 
     boolean isZipUpload(MultipartFile file);
 

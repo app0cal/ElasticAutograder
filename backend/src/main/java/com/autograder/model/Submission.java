@@ -10,6 +10,8 @@ import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
 
+import com.autograder.service.identity.RequestIdentity;
+
 /**
  * JPA entity for uploaded submission source stored in shared durable storage.
  */
@@ -33,6 +35,12 @@ public class Submission {
     @Column(name = "content_type")
     private String contentType;
 
+    @Column(name = "institution_id", nullable = false)
+    private String institutionId;
+
+    @Column(name = "submitted_by", nullable = false)
+    private String submittedBy;
+
     @Column(name = "size_bytes", nullable = false)
     private Long sizeBytes;
 
@@ -43,11 +51,26 @@ public class Submission {
     }
 
     public Submission(UUID storageKey, String originalFilename, String content, String contentType, Long sizeBytes) {
+        this(storageKey, originalFilename, content, contentType, sizeBytes,
+                RequestIdentity.DEFAULT_INSTITUTION, RequestIdentity.DEFAULT_USER);
+    }
+
+    public Submission(
+            UUID storageKey,
+            String originalFilename,
+            String content,
+            String contentType,
+            Long sizeBytes,
+            String institutionId,
+            String submittedBy
+    ) {
         this.storageKey = storageKey;
         this.originalFilename = originalFilename;
         this.content = content;
         this.contentType = contentType;
         this.sizeBytes = sizeBytes;
+        this.institutionId = institutionId;
+        this.submittedBy = submittedBy;
     }
 
     public Long getId() {
@@ -84,6 +107,22 @@ public class Submission {
 
     public void setContentType(String contentType) {
         this.contentType = contentType;
+    }
+
+    public String getInstitutionId() {
+        return institutionId;
+    }
+
+    public void setInstitutionId(String institutionId) {
+        this.institutionId = institutionId;
+    }
+
+    public String getSubmittedBy() {
+        return submittedBy;
+    }
+
+    public void setSubmittedBy(String submittedBy) {
+        this.submittedBy = submittedBy;
     }
 
     public Long getSizeBytes() {

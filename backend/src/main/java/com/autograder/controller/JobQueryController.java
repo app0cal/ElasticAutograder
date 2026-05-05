@@ -10,10 +10,13 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.CrossOrigin;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
+import com.autograder.service.identity.RequestIdentity;
+import com.autograder.service.identity.RequestIdentityProvider;
 import com.autograder.service.job.DownloadedJobResult;
 import com.autograder.service.job.JobNotFoundException;
 import com.autograder.service.job.JobQueryService;
@@ -29,20 +32,34 @@ import com.autograder.service.job.JobResponse;
 public class JobQueryController {
 
     private final JobQueryService jobQueryService;
+    private final RequestIdentityProvider requestIdentityProvider;
 
-    public JobQueryController(JobQueryService jobQueryService) {
+    public JobQueryController(
+            JobQueryService jobQueryService,
+            RequestIdentityProvider requestIdentityProvider
+    ) {
         this.jobQueryService = jobQueryService;
+        this.requestIdentityProvider = requestIdentityProvider;
     }
 
     @GetMapping("/jobs/recent")
-    public ResponseEntity<List<JobResponse>> getRecentJobs() {
-        return ResponseEntity.ok(jobQueryService.getRecentJobs());
+    public ResponseEntity<List<JobResponse>> getRecentJobs(
+            @RequestHeader(value = "X-Mock-Institution", required = false) String institutionHeader,
+            @RequestHeader(value = "X-Mock-User", required = false) String userHeader
+    ) {
+        RequestIdentity identity = requestIdentityProvider.resolve(institutionHeader, userHeader);
+        return ResponseEntity.ok(jobQueryService.getRecentJobs(identity));
     }
 
     @GetMapping("/jobs/{id}")
-    public ResponseEntity<?> getJobById(@PathVariable Long id) {
+    public ResponseEntity<?> getJobById(
+            @PathVariable Long id,
+            @RequestHeader(value = "X-Mock-Institution", required = false) String institutionHeader,
+            @RequestHeader(value = "X-Mock-User", required = false) String userHeader
+    ) {
         try {
-            return ResponseEntity.ok(jobQueryService.getJobById(id));
+            RequestIdentity identity = requestIdentityProvider.resolve(institutionHeader, userHeader);
+            return ResponseEntity.ok(jobQueryService.getJobById(id, identity));
         } catch (JobNotFoundException e) {
             return ResponseEntity.status(HttpStatus.NOT_FOUND).body(e.getMessage());
         }
@@ -58,10 +75,13 @@ public class JobQueryController {
     @GetMapping("/jobs/result/{id}")
     public ResponseEntity<String> downloadResults(
             @PathVariable Long id,
-            @RequestParam(defaultValue = "true") boolean fromTable
+            @RequestParam(defaultValue = "true") boolean fromTable,
+            @RequestHeader(value = "X-Mock-Institution", required = false) String institutionHeader,
+            @RequestHeader(value = "X-Mock-User", required = false) String userHeader
     ) throws IOException {
         try {
-            DownloadedJobResult result = jobQueryService.downloadResults(id, fromTable);
+            RequestIdentity identity = requestIdentityProvider.resolve(institutionHeader, userHeader);
+            DownloadedJobResult result = jobQueryService.downloadResults(id, fromTable, identity);
             HttpHeaders headers = new HttpHeaders();
             headers.setContentType(MediaType.APPLICATION_JSON);
             if (result.attachment()) {

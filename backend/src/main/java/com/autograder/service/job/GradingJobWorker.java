@@ -4,6 +4,8 @@ import java.util.concurrent.atomic.AtomicBoolean;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import jakarta.annotation.PreDestroy;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.boot.context.event.ApplicationReadyEvent;
 import org.springframework.context.event.EventListener;
@@ -19,6 +21,8 @@ import com.autograder.config.WorkerProperties;
  */
 @Service
 public class GradingJobWorker {
+
+    private static final Logger logger = LoggerFactory.getLogger(GradingJobWorker.class);
 
     private final StringRedisTemplate redisTemplate;
     private final ObjectMapper objectMapper;
@@ -57,6 +61,11 @@ public class GradingJobWorker {
         pollingThread = new Thread(this::pollLoop, "grading-redis-poller");
         pollingThread.setDaemon(true);
         pollingThread.start();
+        logger.info(
+                "Started Redis grading worker queue={} concurrency={}",
+                queueProperties.getName(),
+                workerProperties.getConcurrency()
+        );
     }
 
     @PreDestroy
@@ -82,13 +91,19 @@ public class GradingJobWorker {
         try {
             GradingJobMessage message = objectMapper.readValue(payload, GradingJobMessage.class);
             if (message.jobId() == null) {
-                System.err.println("Skipping grading queue message without jobId.");
+                logger.warn("Skipping grading queue message without jobId.");
                 return;
             }
 
+            logger.info(
+                    "Worker consumed grading job jobId={} institutionId={} attempt={}",
+                    message.jobId(),
+                    message.institutionId(),
+                    message.attempt()
+            );
             gradingTaskExecutor.execute(() -> jobExecutionService.executeQueuedJob(message.jobId()));
         } catch (Exception e) {
-            System.err.println("Skipping malformed grading queue message: " + e.getMessage());
+            logger.warn("Skipping malformed grading queue message: {}", e.getMessage());
         }
     }
 
@@ -97,7 +112,7 @@ public class GradingJobWorker {
             try {
                 pollOnce();
             } catch (Exception e) {
-                System.err.println("Redis grading queue poll failed: " + e.getMessage());
+                logger.warn("Redis grading queue poll failed: {}", e.getMessage());
                 sleepAfterFailure();
             }
         }

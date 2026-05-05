@@ -62,17 +62,17 @@ public class JobSubmissionService {
         }
 
         String cleanedGraderType = cleanGraderType(graderType);
-        GraderDefinition grader = graderRegistry.getRequired(cleanedGraderType);
+        GraderDefinition grader = graderRegistry.getRequired(identity.institution(), cleanedGraderType);
 
         List<StoredSubmission> submissions = submissionStorageService.isZipUpload(file)
-                ? submissionStorageService.storeZip(file)
-                : List.of(submissionStorageService.storeSingle(file));
+                ? submissionStorageService.storeZip(file, identity)
+                : List.of(submissionStorageService.storeSingle(file, identity));
 
         List<Job> createdJobs = new ArrayList<>();
         try {
             List<UploadedJobSummary> uploadedJobs = new ArrayList<>();
             for (StoredSubmission submission : submissions) {
-                Job job = createQueuedJob(submission, cleanedGraderType, grader);
+                Job job = createQueuedJob(submission, cleanedGraderType, grader, identity);
                 createdJobs.add(job);
                 uploadedJobs.add(new UploadedJobSummary(job.getId(), job.getOriginalFilename()));
             }
@@ -92,11 +92,18 @@ public class JobSubmissionService {
         }
     }
 
-    private Job createQueuedJob(StoredSubmission submission, String graderType, GraderDefinition grader) {
+    private Job createQueuedJob(
+            StoredSubmission submission,
+            String graderType,
+            GraderDefinition grader,
+            RequestIdentity identity
+    ) {
         Job job = new Job(submission.originalFileName(), graderType, OffsetDateTime.now(), JobStatus.QUEUED);
         job.setSubmissionId(submission.submissionId());
         job.setSubmissionPath(submission.key());
         job.setGraderImage(grader.getImageName());
+        job.setInstitutionId(identity.institution());
+        job.setSubmittedBy(identity.user());
         return jobRepository.save(job);
     }
 

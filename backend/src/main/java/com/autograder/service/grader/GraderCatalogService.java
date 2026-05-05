@@ -20,8 +20,8 @@ public class GraderCatalogService {
         this.graderRegistry = graderRegistry;
     }
 
-    public List<GraderOptionResponse> getGraders() {
-        return graderRegistry.getAll().stream()
+    public List<GraderOptionResponse> getGraders(String institutionId) {
+        return graderRegistry.getAll(institutionId).stream()
                 .map(grader -> new GraderOptionResponse(
                         grader.getKey(),
                         grader.getLabel(),

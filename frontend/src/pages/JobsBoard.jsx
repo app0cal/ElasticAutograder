@@ -2,6 +2,8 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { fetchRecentJobs, fetchGraders } from "../api/jobs";
 import JobsTable from "../components/JobsTable";
+import MockIdentityPanel from "../components/MockIdentityPanel";
+import { subscribeToMockIdentityChanges } from "../api/mock_identity";
 
 const REFRESH_INTERVAL = 1000;
 
@@ -49,7 +51,12 @@ export default function JobsBoard() {
       load(false);
     }, REFRESH_INTERVAL);
 
-    return () => clearInterval(refreshInterval.current);
+    const unsubscribe = subscribeToMockIdentityChanges(() => load(true));
+
+    return () => {
+      clearInterval(refreshInterval.current);
+      unsubscribe();
+    };
   }, []);
 
   const summary = useMemo(() => {
@@ -80,6 +87,7 @@ export default function JobsBoard() {
           </div>
 
           <div className="jobs-top-bar-actions">
+            <MockIdentityPanel />
             <Link to="/" className="button nav-button">
               Home
             </Link>

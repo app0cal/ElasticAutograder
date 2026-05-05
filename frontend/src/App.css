@@ -641,7 +641,7 @@
   gap: 16px;
 }
 
-.submit-assignment-heading h2 {
+  .submit-assignment-heading h2 {
   font-size: 1.9rem;
 }
 
@@ -951,7 +951,24 @@
     width: 100%;
   }
 
-  .submit-assignment-heading h2 {
+.submit-assignment-heading h2 {
     font-size: 1.45rem;
+  }
+}
+
+.mock-identity-card {
+  display: grid;
+  gap: 12px;
+  min-width: 220px;
+}
+
+.jobs-top-bar-actions .mock-identity-card {
+  grid-template-columns: repeat(2, minmax(120px, 1fr));
+}
+
+@media (max-width: 900px) {
+  .jobs-top-bar-actions .mock-identity-card {
+    grid-template-columns: 1fr;
+    width: 100%;
   }
 }

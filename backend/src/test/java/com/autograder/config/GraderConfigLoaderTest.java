@@ -158,6 +158,44 @@ class GraderConfigLoaderTest {
         assertTrue(ex.getMessage().contains("Duplicate grader key found"));
     }
 
+    @Test
+    void loadGraders_sameKeyDifferentInstitutions_returnsGraders() throws Exception {
+        Path configFile = tempDir.resolve("graders.json");
+
+        String json = """
+        {
+          "graders": [
+            {
+              "institutionId": "university-a",
+              "key": "fib",
+              "label": "Fibonacci A",
+              "imageName": "ea-grader-fib-a:v1",
+              "manifestPath": "/app/grader/manifest.json",
+              "summary": "Institution A grader.",
+              "details": ["Return the nth Fibonacci number."]
+            },
+            {
+              "institutionId": "university-b",
+              "key": "fib",
+              "label": "Fibonacci B",
+              "imageName": "ea-grader-fib-b:v1",
+              "manifestPath": "/app/grader/manifest.json",
+              "summary": "Institution B grader.",
+              "details": ["Return the nth Fibonacci number."]
+            }
+          ]
+        }
+        """;
+
+        Files.writeString(configFile, json);
+
+        List<GraderDefinition> graders = createLoader().loadGraders(configFile);
+
+        assertEquals(2, graders.size());
+        assertEquals("university-a", graders.get(0).getInstitutionId());
+        assertEquals("university-b", graders.get(1).getInstitutionId());
+    }
+
     /**
      * Verifies that CPU requests cannot exceed CPU limits.
      * Expected behavior: invalid resource settings are rejected with a clear validation error.

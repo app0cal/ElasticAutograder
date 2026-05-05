@@ -10,5 +10,5 @@ import tools.jackson.databind.JsonNode;
  */
 public interface JobDispatcher {
 
-    JsonNode dispatch(Long jobId, String submissionKey, String graderType) throws Exception;
+    JsonNode dispatch(Long jobId, String submissionKey, String graderType, String institutionId) throws Exception;
 }

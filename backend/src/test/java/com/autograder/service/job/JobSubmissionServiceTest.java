@@ -48,7 +48,7 @@ class JobSubmissionServiceTest {
                 jobExecutionService
         );
 
-        when(graderRegistry.getRequired("fib")).thenReturn(grader());
+        when(graderRegistry.getRequired("local", "fib")).thenReturn(grader());
         when(jobRepository.save(any(Job.class))).thenAnswer(invocation -> {
             Job job = invocation.getArgument(0);
             setJobId(job, 1L);
@@ -59,7 +59,7 @@ class JobSubmissionServiceTest {
     @Test
     void upload_singleFile_createsQueuedJob() throws Exception {
         when(submissionStorageService.isZipUpload(any())).thenReturn(false);
-        when(submissionStorageService.storeSingle(any()))
+        when(submissionStorageService.storeSingle(any(), any()))
                 .thenReturn(new StoredSubmission(44L, "db:2ee63863-c9ec-4a1f-8ce9-d4db05cc7a5c", "submission.py"));
 
         UploadJobResponse response = service.upload(file(), "fib", RequestIdentity.localAnonymous());
@@ -72,6 +72,8 @@ class JobSubmissionServiceTest {
         assertEquals("db:2ee63863-c9ec-4a1f-8ce9-d4db05cc7a5c", savedJob.getValue().getSubmissionPath());
         assertEquals(44L, savedJob.getValue().getSubmissionId());
         assertEquals("fib", savedJob.getValue().getGraderType());
+        assertEquals("local", savedJob.getValue().getInstitutionId());
+        assertEquals("anonymous", savedJob.getValue().getSubmittedBy());
         assertEquals(JobStatus.QUEUED, savedJob.getValue().getStatus());
         assertEquals("ea-grader-fib:v1", savedJob.getValue().getGraderImage());
         verify(jobExecutionService).enqueueJob(1L, RequestIdentity.localAnonymous());
@@ -80,7 +82,7 @@ class JobSubmissionServiceTest {
     @Test
     void upload_zipBatch_createsOneJobPerSubmission() throws Exception {
         when(submissionStorageService.isZipUpload(any())).thenReturn(true);
-        when(submissionStorageService.storeZip(any())).thenReturn(List.of(
+        when(submissionStorageService.storeZip(any(), any())).thenReturn(List.of(
                 new StoredSubmission(51L, "db:0884c63f-9d50-4055-9a1a-69ec4507ba2e", "alpha.py"),
                 new StoredSubmission(52L, "db:d2bddbb4-479d-43f7-aee2-e3bb4d818ff1", "beta.py")
         ));
@@ -95,7 +97,7 @@ class JobSubmissionServiceTest {
 
     @Test
     void upload_unknownGrader_rejectsBeforeStorage() throws Exception {
-        when(graderRegistry.getRequired("missing"))
+        when(graderRegistry.getRequired("local", "missing"))
                 .thenThrow(new IllegalArgumentException("Unknown grader key: missing"));
 
         IllegalArgumentException exception = assertThrows(
@@ -104,14 +106,14 @@ class JobSubmissionServiceTest {
         );
 
         assertEquals("Unknown grader key: missing", exception.getMessage());
-        verify(submissionStorageService, times(0)).storeSingle(any());
-        verify(submissionStorageService, times(0)).storeZip(any());
+        verify(submissionStorageService, times(0)).storeSingle(any(), any());
+        verify(submissionStorageService, times(0)).storeZip(any(), any());
     }
 
     @Test
     void upload_saveFailure_cleansStoredSubmissions() throws Exception {
         when(submissionStorageService.isZipUpload(any())).thenReturn(false);
-        when(submissionStorageService.storeSingle(any()))
+        when(submissionStorageService.storeSingle(any(), any()))
                 .thenReturn(new StoredSubmission(44L, "db:2ee63863-c9ec-4a1f-8ce9-d4db05cc7a5c", "submission.py"));
         when(jobRepository.save(any(Job.class))).thenThrow(new RuntimeException("database down"));
 

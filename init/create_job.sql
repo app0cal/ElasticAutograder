@@ -8,6 +8,8 @@ CREATE TABLE submissions (
   original_filename TEXT NOT NULL,
   content TEXT NOT NULL,
   content_type TEXT,
+  institution_id TEXT NOT NULL DEFAULT 'local',
+  submitted_by TEXT NOT NULL DEFAULT 'anonymous',
   size_bytes BIGINT NOT NULL,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
@@ -21,6 +23,8 @@ CREATE TABLE jobs (
   submission_path TEXT,
   submission_id BIGINT REFERENCES submissions(id),
   grader_image TEXT,
+  institution_id TEXT NOT NULL DEFAULT 'local',
+  submitted_by TEXT NOT NULL DEFAULT 'anonymous',
 
   status TEXT NOT NULL CHECK (
     status IN ('PENDING', 'QUEUED', 'RUNNING', 'SUCCEEDED', 'PARTIAL', 'FAILED', 'CANCELLED')
@@ -72,11 +76,17 @@ CREATE INDEX idx_jobs_created_at
 CREATE INDEX idx_jobs_submission_id
   ON jobs(submission_id);
 
+CREATE INDEX idx_jobs_institution_created_at
+  ON jobs(institution_id, created_at DESC);
+
 CREATE INDEX idx_jobs_k8s_job_name
   ON jobs(k8s_job_name);
 
 CREATE INDEX idx_submissions_storage_key
   ON submissions(storage_key);
+
+CREATE INDEX idx_submissions_institution
+  ON submissions(institution_id);
 
 -- Helper function to refresh updated_at on row updates
 CREATE OR REPLACE FUNCTION set_updated_at()

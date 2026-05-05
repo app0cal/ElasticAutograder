@@ -10,5 +10,5 @@ import tools.jackson.databind.JsonNode;
  * 
  */
 public interface GradingOrchestrator {
-    JsonNode runJobInKubernetes(Long jobId, String fileName, String graderType) throws Exception;
+    JsonNode runJobInKubernetes(Long jobId, String fileName, String graderType, String institutionId) throws Exception;
 }

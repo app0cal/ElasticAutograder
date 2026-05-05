@@ -8,6 +8,7 @@ import org.springframework.stereotype.Service;
 
 import com.autograder.model.Job;
 import com.autograder.repository.JobRepository;
+import com.autograder.service.identity.RequestIdentity;
 
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
@@ -26,22 +27,45 @@ public class JobQueryService {
     }
 
     public List<JobResponse> getRecentJobs() {
-        return jobRepository.findAllOrderByCreatedAtDesc().stream()
+        return getRecentJobs(RequestIdentity.localAnonymous());
+    }
+
+    public List<JobResponse> getRecentJobs(RequestIdentity identity) {
+        return jobRepository.findAllByInstitutionIdOrderByCreatedAtDesc(identity.institution()).stream()
                 .map(JobResponse::fromJob)
                 .toList();
     }
 
     public JobResponse getJobById(Long id) {
-        return JobResponse.fromJob(getJobEntityById(id));
+        return getJobById(id, RequestIdentity.localAnonymous());
+    }
+
+    public JobResponse getJobById(Long id, RequestIdentity identity) {
+        return JobResponse.fromJob(getJobEntityById(id, identity));
     }
 
     private Job getJobEntityById(Long id) {
-        Optional<Job> jobEntity = jobRepository.findById(id);
+        return getJobEntityById(id, RequestIdentity.localAnonymous());
+    }
+
+    private Job getJobEntityById(Long id, RequestIdentity identity) {
+        Optional<Job> jobEntity = jobRepository.findByIdAndInstitutionId(id, identity.institution());
         if (jobEntity.isEmpty()) {
             throw new JobNotFoundException("Unable to find job with id: " + id);
         }
 
         return jobEntity.get();
+    }
+
+    public DownloadedJobResult downloadResults(Long id, boolean fromTable, RequestIdentity identity) throws IOException {
+        Job job = getJobEntityById(id, identity);
+        if (job.getResultJson() == null) {
+            throw new JobResultUnavailableException("Unable to get results for id: " + id);
+        }
+
+        JsonNode resultJson = objectMapper.readTree(job.getResultJson());
+        String prettyJson = objectMapper.writerWithDefaultPrettyPrinter().writeValueAsString(resultJson);
+        return new DownloadedJobResult(prettyJson, fromTable);
     }
 
     /**
@@ -52,13 +76,6 @@ public class JobQueryService {
      * @return prepared JSON response body and attachment flag
      */
     public DownloadedJobResult downloadResults(Long id, boolean fromTable) throws IOException {
-        Job job = getJobEntityById(id);
-        if (job.getResultJson() == null) {
-            throw new JobResultUnavailableException("Unable to get results for id: " + id);
-        }
-
-        JsonNode resultJson = objectMapper.readTree(job.getResultJson());
-        String prettyJson = objectMapper.writerWithDefaultPrettyPrinter().writeValueAsString(resultJson);
-        return new DownloadedJobResult(prettyJson, fromTable);
+        return downloadResults(id, fromTable, RequestIdentity.localAnonymous());
     }
 }

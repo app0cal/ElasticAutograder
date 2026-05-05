@@ -122,6 +122,12 @@ public class GraderConfigLoader {
         if (grader.getMemoryLimitMb() == null) {
             grader.setMemoryLimitMb(DEFAULT_MEMORY_LIMIT_MB);
         }
+
+        if (grader.getGraderFolder() == null || grader.getGraderFolder().isBlank()) {
+            grader.setGraderFolder(grader.getKey());
+        } else {
+            grader.setGraderFolder(grader.getGraderFolder().trim());
+        }
     }
 
     /**
@@ -139,10 +145,20 @@ public class GraderConfigLoader {
         HashSet<String> seenKeys = new HashSet<>();
 
         for (GraderDefinition grader : graders) {
-          if (!seenKeys.add(grader.getKey())) {
-            throw new IllegalStateException("Duplicate grader key found");
+          applyInstitutionDefault(grader);
+          String scopedKey = grader.getInstitutionId() + ":" + grader.getKey();
+          if (!seenKeys.add(scopedKey)) {
+            throw new IllegalStateException("Duplicate grader key found for institution: " + grader.getInstitutionId());
           }
           validateGrader(grader);
+        }
+    }
+
+    private void applyInstitutionDefault(GraderDefinition grader) {
+        if (grader.getInstitutionId() == null || grader.getInstitutionId().isBlank()) {
+            grader.setInstitutionId("local");
+        } else {
+            grader.setInstitutionId(grader.getInstitutionId().trim());
         }
     }
 
@@ -158,12 +174,20 @@ public class GraderConfigLoader {
             throw new IllegalStateException("Each grader must have a non-empty key.");
         }
 
+      if (grader.getInstitutionId() == null || grader.getInstitutionId().isBlank()) {
+          throw new IllegalStateException("Grader '" + grader.getKey() + "' is missing an institutionId.");
+      }
+
       if (grader.getLabel() == null || grader.getLabel().isBlank()) {
           throw new IllegalStateException("Grader '" + grader.getKey() + "' is missing a label.");
       }
 
       if (grader.getImageName() == null || grader.getImageName().isBlank()) {
           throw new IllegalStateException("Grader '" + grader.getKey() + "' is missing an imageName.");
+      }
+
+      if (grader.getGraderFolder() == null || grader.getGraderFolder().isBlank()) {
+          throw new IllegalStateException("Grader '" + grader.getKey() + "' is missing a graderFolder.");
       }
 
       if (grader.getManifestPath() == null || grader.getManifestPath().isBlank()) {

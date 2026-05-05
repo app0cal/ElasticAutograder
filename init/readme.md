@@ -20,3 +20,9 @@ without dropping existing job history, run:
 ```bash
 docker exec -i ea-postgres psql -U postgres -d elastic_autograder < init\add_submission_storage.sql
 ```
+
+If your database already exists and you need to add mock institution/user
+ownership columns without dropping existing job history, run:
+```bash
+docker exec -i ea-postgres psql -U postgres -d elastic_autograder < init\add_mock_identity_ownership.sql
+```

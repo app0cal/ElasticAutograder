@@ -3,6 +3,8 @@ package com.autograder.service.job;
 import java.time.OffsetDateTime;
 import java.util.Optional;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 
@@ -27,6 +29,8 @@ import tools.jackson.databind.node.StringNode;
  */
 @Service
 public class JobExecutionService {
+
+    private static final Logger logger = LoggerFactory.getLogger(JobExecutionService.class);
 
     private final JobRepository jobRepository;
     private final LocalGraderSetupStatus graderSetupStatus;
@@ -64,6 +68,9 @@ public class JobExecutionService {
         }
 
         Job job = getJobOrThrow(id, "Unable to find job object for id " + id);
+        if (!identity.institution().equals(job.getInstitutionId())) {
+            throw new JobNotFoundException("Unable to find job object for id " + id);
+        }
         if (job.getStatus() != JobStatus.QUEUED) {
             throw new IllegalArgumentException("Job " + id + " is not queued.");
         }
@@ -85,6 +92,7 @@ public class JobExecutionService {
 
         Job job = jobEntity.get();
         if (job.getStatus() != JobStatus.QUEUED) {
+            logger.info("Skipping non-queued job jobId={} status={}", id, job.getStatus());
             return;
         }
 
@@ -94,13 +102,20 @@ public class JobExecutionService {
             submissionKey = submissionStorageService.resolveSubmissionKey(job.getSubmissionPath(), null);
 
             markRunning(job);
-            var result = jobDispatcher.dispatch(id, submissionKey, job.getGraderType());
+            logger.info(
+                    "Started grading job jobId={} institutionId={} graderType={}",
+                    id,
+                    job.getInstitutionId(),
+                    job.getGraderType()
+            );
+            var result = jobDispatcher.dispatch(id, submissionKey, job.getGraderType(), job.getInstitutionId());
 
             jobResultMapper.applyJobResults(job, result);
             job.setFinishedAt(OffsetDateTime.now());
             job.setUpdatedAt(OffsetDateTime.now());
             job.setK8sJobName("grading-job-" + id);
             jobRepository.saveAndFlush(job);
+            logger.info("Finished grading job jobId={} status={}", id, job.getStatus());
         } catch (IllegalArgumentException e) {
             persistFailure(job, FailureReason.CONFIG_ERROR, e.getMessage());
         } catch (GradingFailureException e) {
@@ -153,6 +168,12 @@ public class JobExecutionService {
         job.setFinishedAt(OffsetDateTime.now());
         job.setUpdatedAt(OffsetDateTime.now());
         jobRepository.saveAndFlush(job);
+        logger.error(
+                "Failed grading job jobId={} failureReason={} message={}",
+                job.getId(),
+                failureReason,
+                message
+        );
     }
 
 }

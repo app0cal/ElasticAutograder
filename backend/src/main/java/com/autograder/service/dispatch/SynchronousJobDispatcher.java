@@ -19,7 +19,7 @@ public class SynchronousJobDispatcher implements JobDispatcher {
     }
 
     @Override
-    public JsonNode dispatch(Long jobId, String submissionKey, String graderType) throws Exception {
-        return gradingOrchestrator.runJobInKubernetes(jobId, submissionKey, graderType);
+    public JsonNode dispatch(Long jobId, String submissionKey, String graderType, String institutionId) throws Exception {
+        return gradingOrchestrator.runJobInKubernetes(jobId, submissionKey, graderType, institutionId);
     }
 }

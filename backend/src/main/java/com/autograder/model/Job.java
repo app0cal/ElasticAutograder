@@ -7,6 +7,8 @@ import org.hibernate.annotations.Type;
 import java.math.BigDecimal;
 import java.time.OffsetDateTime;
 
+import com.autograder.service.identity.RequestIdentity;
+
 /**
  * JPA entity representing one submitted grading job.
  *
@@ -39,6 +41,12 @@ public class Job {
 
     @Column(name = "grader_image")
     private String graderImage;
+
+    @Column(name = "institution_id", nullable = false)
+    private String institutionId;
+
+    @Column(name = "submitted_by", nullable = false)
+    private String submittedBy;
 
     @Enumerated(EnumType.STRING)
     @Column(name = "status", nullable = false)
@@ -90,6 +98,8 @@ public class Job {
         this.status = status;
         this.failureReason = FailureReason.NONE;
         this.failureMessage = null;
+        this.institutionId = RequestIdentity.DEFAULT_INSTITUTION;
+        this.submittedBy = RequestIdentity.DEFAULT_USER;
     }
 
     public Long getId() {
@@ -134,6 +144,22 @@ public class Job {
 
     public void setGraderImage(String graderImage) {
         this.graderImage = graderImage;
+    }
+
+    public String getInstitutionId() {
+        return institutionId;
+    }
+
+    public void setInstitutionId(String institutionId) {
+        this.institutionId = institutionId;
+    }
+
+    public String getSubmittedBy() {
+        return submittedBy;
+    }
+
+    public void setSubmittedBy(String submittedBy) {
+        this.submittedBy = submittedBy;
     }
 
     public JobStatus getStatus() {

@@ -3,9 +3,11 @@ package com.autograder.model;
 import java.util.List;
 
 public class GraderDefinition {
+    private String institutionId; // mock institution that owns this grader definition
     private String key; // main key for identifying the grader, e.g. "fib" or "twosum"
     private String label; // human readable label for the grader, e.g. "Fibonacci" or "Two Sum"
     private String imageName; // the name of the docker image for this grader, e.g. "ea-grader-fibbonaci:v1" or "ea-grader-twosum:v1"
+    private String graderFolder; // folder under backend/grading/image-build; defaults to key
     private String manifestPath; // the path to the manifest file for this grader, e.g. "/app/grader/manifest.json"
     private String summary; // short overview shown in the submit page
     private List<String> details; // longer description points rendered as a list
@@ -41,9 +43,11 @@ public class GraderDefinition {
             Integer memoryRequestMb,
             Integer memoryLimitMb
     ) {
+        this.institutionId = "local";
         this.key = key;
         this.label = label;
         this.imageName = imageName;
+        this.graderFolder = key;
         this.manifestPath = manifestPath;
         this.summary = summary;
         this.details = details;
@@ -62,6 +66,14 @@ public class GraderDefinition {
     }
 
     // getters for all fields (no setters since this is immutable)
+    public String getInstitutionId() {
+        return institutionId;
+    }
+
+    public void setInstitutionId(String institutionId) {
+        this.institutionId = institutionId;
+    }
+
     public String getKey() {
         return key;
     }
@@ -84,6 +96,14 @@ public class GraderDefinition {
 
     public void setImageName(String imageName){
         this.imageName = imageName;
+    }
+
+    public String getGraderFolder() {
+        return graderFolder;
+    }
+
+    public void setGraderFolder(String graderFolder) {
+        this.graderFolder = graderFolder;
     }
 
     public String getManifestPath() {

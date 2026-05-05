@@ -1,3 +1,5 @@
+import { getMockIdentityHeaders } from "./mock_identity";
+
 const API_BASE = "http://localhost:8080/api";
 
 export async function uploadFile(file, graderType) {
@@ -7,6 +9,7 @@ export async function uploadFile(file, graderType) {
 
   const response = await fetch(`${API_BASE}/jobs/upload`, {
     method: "POST",
+    headers: getMockIdentityHeaders(),
     body: formData
   });
 

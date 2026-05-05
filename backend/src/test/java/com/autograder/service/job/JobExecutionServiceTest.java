@@ -83,6 +83,20 @@ class JobExecutionServiceTest {
     }
 
     @Test
+    void enqueueJob_differentInstitution_throwsNotFound() throws Exception {
+        Job job = job(14L);
+        job.setInstitutionId("university-a");
+        when(jobRepository.findById(14L)).thenReturn(Optional.of(job));
+
+        JobNotFoundException exception = assertThrows(
+                JobNotFoundException.class,
+                () -> service.enqueueJob(14L, new RequestIdentity("university-b", "student-1"))
+        );
+
+        assertEquals("Unable to find job object for id 14", exception.getMessage());
+    }
+
+    @Test
     void executeQueuedJob_success_persistsResultAndRetainsSubmission() throws Exception {
         Job job = job(11L);
         job.setSubmissionPath("db:2ee63863-c9ec-4a1f-8ce9-d4db05cc7a5c");
@@ -95,7 +109,7 @@ class JobExecutionServiceTest {
         result.put("tests_passed", 2);
         result.put("tests_total", 2);
         result.putArray("results").addObject().put("name", "case_1").put("passed", true);
-        when(jobDispatcher.dispatch(11L, "db:2ee63863-c9ec-4a1f-8ce9-d4db05cc7a5c", "fib")).thenReturn(result);
+        when(jobDispatcher.dispatch(11L, "db:2ee63863-c9ec-4a1f-8ce9-d4db05cc7a5c", "fib", "local")).thenReturn(result);
 
         service.executeQueuedJob(11L);
 
@@ -139,7 +153,7 @@ class JobExecutionServiceTest {
         when(jobRepository.findById(13L)).thenReturn(Optional.of(job));
         when(submissionStorageService.resolveSubmissionKey("submission.py", null))
                 .thenReturn("submission.py");
-        when(jobDispatcher.dispatch(13L, "submission.py", "fib"))
+        when(jobDispatcher.dispatch(13L, "submission.py", "fib", "local"))
                 .thenThrow(new GradingFailureException(FailureReason.TIMEOUT, "Timed out"));
 
         service.executeQueuedJob(13L);

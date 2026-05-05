@@ -25,6 +25,7 @@ import org.springframework.mock.web.MockMultipartFile;
 
 import com.autograder.model.Submission;
 import com.autograder.repository.SubmissionRepository;
+import com.autograder.service.identity.RequestIdentity;
 
 class DatabaseSubmissionStorageServiceTest {
 
@@ -45,7 +46,10 @@ class DatabaseSubmissionStorageServiceTest {
 
     @Test
     void storeSingle_validFile_storesSubmissionRow() throws Exception {
-        StoredSubmission storedSubmission = storageService.storeSingle(file("submission.py", "print('hello')"));
+        StoredSubmission storedSubmission = storageService.storeSingle(
+                file("submission.py", "print('hello')"),
+                new RequestIdentity("university-a", "student-1")
+        );
 
         ArgumentCaptor<Submission> savedSubmission = ArgumentCaptor.forClass(Submission.class);
         verify(submissionRepository).save(savedSubmission.capture());
@@ -54,6 +58,8 @@ class DatabaseSubmissionStorageServiceTest {
         assertEquals("submission.py", storedSubmission.originalFileName());
         assertEquals("submission.py", savedSubmission.getValue().getOriginalFilename());
         assertEquals("print('hello')", savedSubmission.getValue().getContent());
+        assertEquals("university-a", savedSubmission.getValue().getInstitutionId());
+        assertEquals("student-1", savedSubmission.getValue().getSubmittedBy());
     }
 
     @Test
@@ -63,7 +69,7 @@ class DatabaseSubmissionStorageServiceTest {
                 "nested/beta.py", "print('beta')"
         ));
 
-        List<StoredSubmission> submissions = storageService.storeZip(zip);
+        List<StoredSubmission> submissions = storageService.storeZip(zip, RequestIdentity.localAnonymous());
 
         assertEquals(2, submissions.size());
         verify(submissionRepository, Mockito.times(2)).save(any(Submission.class));
@@ -78,7 +84,7 @@ class DatabaseSubmissionStorageServiceTest {
 
         IllegalArgumentException exception = assertThrows(
                 IllegalArgumentException.class,
-                () -> storageService.storeZip(zip)
+                () -> storageService.storeZip(zip, RequestIdentity.localAnonymous())
         );
 
         assertEquals("Zip archive contains duplicate file names: duplicate.py", exception.getMessage());
@@ -88,7 +94,7 @@ class DatabaseSubmissionStorageServiceTest {
     void storeZip_emptyArchive_rejectsUpload() throws Exception {
         IllegalArgumentException exception = assertThrows(
                 IllegalArgumentException.class,
-                () -> storageService.storeZip(zipFile("empty.zip", Map.of()))
+                () -> storageService.storeZip(zipFile("empty.zip", Map.of()), RequestIdentity.localAnonymous())
         );
 
         assertEquals("Zip archive does not contain any files.", exception.getMessage());
@@ -98,7 +104,7 @@ class DatabaseSubmissionStorageServiceTest {
     void storeSingle_pathTraversal_rejectsUpload() {
         IllegalArgumentException exception = assertThrows(
                 IllegalArgumentException.class,
-                () -> storageService.storeSingle(file("../secret.py", "print('bad')"))
+                () -> storageService.storeSingle(file("../secret.py", "print('bad')"), RequestIdentity.localAnonymous())
         );
 
         assertEquals("Invalid file name.", exception.getMessage());

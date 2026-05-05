@@ -16,6 +16,8 @@ import java.util.zip.ZipInputStream;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
 
+import com.autograder.service.identity.RequestIdentity;
+
 /**
  * Local filesystem implementation for staged submission storage.
  *
@@ -35,7 +37,7 @@ public class LocalSubmissionStorageService implements SubmissionStorageService {
      * @throws IOException if the upload directory or file cannot be written
      */
     @Override
-    public StoredSubmission storeSingle(MultipartFile file) throws IOException {
+    public StoredSubmission storeSingle(MultipartFile file, RequestIdentity identity) throws IOException {
         ensureUploadRootExists();
 
         String fileName = sanitizeFileName(file.getOriginalFilename());
@@ -60,7 +62,7 @@ public class LocalSubmissionStorageService implements SubmissionStorageService {
      * @throws IOException if archive extraction fails
      */
     @Override
-    public List<StoredSubmission> storeZip(MultipartFile file) throws IOException {
+    public List<StoredSubmission> storeZip(MultipartFile file, RequestIdentity identity) throws IOException {
         ensureUploadRootExists();
 
         Path batchDirectory = createZipUploadDirectory(file.getOriginalFilename());

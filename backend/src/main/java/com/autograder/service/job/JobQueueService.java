@@ -2,6 +2,8 @@ package com.autograder.service.job;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Service;
 
@@ -17,6 +19,8 @@ import com.autograder.service.identity.RequestIdentity;
  */
 @Service
 public class JobQueueService {
+
+    private static final Logger logger = LoggerFactory.getLogger(JobQueueService.class);
 
     private final StringRedisTemplate redisTemplate;
     private final ObjectMapper objectMapper;
@@ -47,13 +51,19 @@ public class JobQueueService {
                 job.getId(),
                 job.getSubmissionPath(),
                 job.getGraderType(),
-                identity.institution(),
-                identity.user(),
+                job.getInstitutionId(),
+                job.getSubmittedBy(),
                 1
         );
 
         try {
             redisTemplate.opsForList().leftPush(queueProperties.getName(), objectMapper.writeValueAsString(message));
+            logger.info(
+                    "Queued grading job jobId={} institutionId={} graderType={}",
+                    job.getId(),
+                    job.getInstitutionId(),
+                    job.getGraderType()
+            );
         } catch (JsonProcessingException e) {
             throw new JobIntakeUnavailableException("Unable to serialize grading queue message.");
         }

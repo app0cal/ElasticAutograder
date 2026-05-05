@@ -1,15 +1,13 @@
 package com.autograder.service;
 
-import com.autograder.config.GraderConfigLoader;
 import com.autograder.model.GraderDefinition;
+import com.autograder.service.grader.GraderCatalogProvider;
+import com.autograder.service.grader.JsonGraderCatalogProvider;
 
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
 import java.util.List;
-import java.util.Map;
-import java.util.function.Function;
-import java.util.stream.Collectors;
 
 
 /**
@@ -23,8 +21,7 @@ import java.util.stream.Collectors;
 @Service
 public class GraderRegistry {
 
-    // Map of grader key -> grader definition to lookup backend
-    private final Map<String, GraderDefinition> graders;
+    private final GraderCatalogProvider graderCatalogProvider;
 
     /**
      * Main Spring constructor used in the running backend.
@@ -32,17 +29,11 @@ public class GraderRegistry {
      * This loads grader definitions from graders.json through the config loader
      * and stores them in a map so each grader can be looked up by its unique key.
      *
-     * @param graderConfigLoader loader used to read grader definitions from config
+     * @param graderCatalogProvider catalog lookup implementation
      */
     @Autowired
-    public GraderRegistry(GraderConfigLoader graderConfigLoader) {
-        List<GraderDefinition> loadedGraders = graderConfigLoader.loadGraders();
-
-        this.graders = loadedGraders.stream()
-                .collect(Collectors.toMap(
-                        GraderDefinition::getKey,
-                        Function.identity()
-                ));
+    public GraderRegistry(GraderCatalogProvider graderCatalogProvider) {
+        this.graderCatalogProvider = graderCatalogProvider;
     }
 
     /**
@@ -54,11 +45,7 @@ public class GraderRegistry {
      * @param graderDefinitions list of grader definitions to register manually
      */
     public GraderRegistry(List<GraderDefinition> graderDefinitions){
-        this.graders = graderDefinitions.stream()
-                .collect(Collectors.toMap(
-                        GraderDefinition::getKey,
-                        Function.identity()
-                ));
+        this.graderCatalogProvider = new JsonGraderCatalogProvider(graderDefinitions);
 
     }
 
@@ -73,11 +60,14 @@ public class GraderRegistry {
      * @throws IllegalArgumentException if the grader key is not registered
      */
     public GraderDefinition getRequired(String key) {
-        GraderDefinition grader = graders.get(key);
-        if (grader == null) {
-            throw new IllegalArgumentException("Unknown grader key: " + key);
-        }
-        return grader;
+        return getRequired("local", key);
+    }
+
+    public GraderDefinition getRequired(String institutionId, String key) {
+        return graderCatalogProvider.findByInstitutionAndKey(institutionId, key)
+                .orElseThrow(() -> new IllegalArgumentException(
+                        "Unknown grader key for institution '" + institutionId + "': " + key
+                ));
     }
 
     /**
@@ -89,6 +79,10 @@ public class GraderRegistry {
      * @return copy of all registered grader definitions
      */
     public List<GraderDefinition> getAll() {
-        return List.copyOf(graders.values());
+        return getAll("local");
+    }
+
+    public List<GraderDefinition> getAll(String institutionId) {
+        return graderCatalogProvider.findByInstitution(institutionId);
     }
 }

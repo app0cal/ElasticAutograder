@@ -24,9 +24,9 @@ class GraderCatalogServiceTest {
         grader.setLabel("Fibonacci");
         grader.setSummary("Summary");
         grader.setDetails(List.of("Detail"));
-        when(graderRegistry.getAll()).thenReturn(List.of(grader));
+        when(graderRegistry.getAll("university-a")).thenReturn(List.of(grader));
 
-        List<GraderOptionResponse> graders = service.getGraders();
+        List<GraderOptionResponse> graders = service.getGraders("university-a");
 
         assertEquals(1, graders.size());
         assertEquals("fib", graders.get(0).getKey());

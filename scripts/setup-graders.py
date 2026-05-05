@@ -124,8 +124,9 @@ def load_graders_config() -> list[dict[str, Any]]:
             fail("Each grader entry must be a JSON object.")
 
         key = grader.get("key")
+        institution_id = grader.get("institutionId") or "local"
         image_name = grader.get("imageName")
-        grader_folder = grader.get("key")
+        grader_folder = grader.get("graderFolder") or grader.get("key")
 
         if not isinstance(key, str) or not key.strip():
             fail("Each grader must have a non-empty string 'key'.")
@@ -134,9 +135,13 @@ def load_graders_config() -> list[dict[str, Any]]:
         if not isinstance(grader_folder, str) or not grader_folder.strip():
             fail(f"Grader '{key}' is missing a valid 'graderFolder'.")
 
-        if key in seen_keys:
-            fail(f"Duplicate grader key found in config: {key}")
-        seen_keys.add(key)
+        if not isinstance(institution_id, str) or not institution_id.strip():
+            fail(f"Grader '{key}' is missing a valid 'institutionId'.")
+
+        scoped_key = f"{institution_id.strip()}:{key}"
+        if scoped_key in seen_keys:
+            fail(f"Duplicate grader key found in config for institution '{institution_id}': {key}")
+        seen_keys.add(scoped_key)
 
         if image_name in seen_images:
             fail(f"Duplicate imageName found in config: {image_name}")
@@ -156,7 +161,7 @@ def load_graders_config() -> list[dict[str, Any]]:
 def build_grader_image(grader: dict[str, Any]) -> None:
     key = grader["key"]
     image_name = grader["imageName"]
-    grader_folder = grader["key"]
+    grader_folder = grader.get("graderFolder") or grader["key"]
 
     log(f"Building grader image for '{key}'...")
     run_or_fail(

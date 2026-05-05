@@ -1,7 +1,9 @@
 {
   "graders": [
     {
+      "institutionId": "local",
       "key": "fib",
+      "graderFolder": "fib",
       "label": "Fibonacci",
       "imageName": "ea-grader-fibbonaci:v1",
       "manifestPath": "/app/grader/manifest.json",
@@ -13,7 +15,9 @@
       ]
     },
     {
+      "institutionId": "local",
       "key": "fib-performance",
+      "graderFolder": "fib-performance",
       "label": "Fibonacci Performance",
       "imageName": "ea-grader-fib-performance:v1",
       "manifestPath": "/app/grader/manifest.json",
@@ -30,7 +34,9 @@
       "memoryLimitMb": 128
     },
     {
+      "institutionId": "local",
       "key": "twosum",
+      "graderFolder": "twosum",
       "label": "Two Sum",
       "imageName": "ea-grader-twosum:v1",
       "manifestPath": "/app/grader/manifest.json",
@@ -42,7 +48,9 @@
       ]
     },
     {
+      "institutionId": "local",
       "key": "memory-demo",
+      "graderFolder": "memory-demo",
       "label": "Memory Limit Demo",
       "imageName": "ea-grader-memory-demo:v1",
       "manifestPath": "/app/grader/manifest.json",

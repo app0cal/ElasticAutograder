@@ -46,6 +46,8 @@ class JobQueueServiceTest {
         Job job = job(42L);
         job.setSubmissionPath("db:2ee63863-c9ec-4a1f-8ce9-d4db05cc7a5c");
         job.setGraderType("fib");
+        job.setInstitutionId("university");
+        job.setSubmittedBy("student");
 
         service.enqueue(job, new RequestIdentity("university", "student"));
 

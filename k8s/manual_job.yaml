@@ -2,12 +2,34 @@ apiVersion: batch/v1
 kind: Job
 metadata:
   name: grading-job-1
+  namespace: elastic-grading
+  labels:
+    app: elastic-autograder
+    component: grader
+    job-id: "1"
+    institution-id: local
+    grader-type: fib
+  annotations:
+    elastic-autograder/job-id: "1"
+    elastic-autograder/institution-id: local
+    elastic-autograder/grader-type: fib
 spec:
+  ttlSecondsAfterFinished: 300
   backoffLimit: 0
+  activeDeadlineSeconds: 10
   template:
+    metadata:
+      labels:
+        app: elastic-autograder
+        component: grader
+        job-id: "1"
+        institution-id: local
+        grader-type: fib
+      annotations:
+        elastic-autograder/job-id: "1"
+        elastic-autograder/institution-id: local
+        elastic-autograder/grader-type: fib
     spec:
-      ttlSecondsAfterFinished: 300
-      backoffLimit: 0
       restartPolicy: Never
       containers:
         - name: grader
@@ -15,6 +37,13 @@ spec:
           imagePullPolicy: IfNotPresent
           command: ["python", "/app/main.py"]
           args: ["/work/submission.py", "/app/grader/manifest.json"]
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
           volumeMounts:
             - name: submission-volume
               mountPath: /work

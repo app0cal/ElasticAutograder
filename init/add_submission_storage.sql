@@ -7,6 +7,8 @@ CREATE TABLE IF NOT EXISTS submissions (
   original_filename TEXT NOT NULL,
   content TEXT NOT NULL,
   content_type TEXT,
+  institution_id TEXT NOT NULL DEFAULT 'local',
+  submitted_by TEXT NOT NULL DEFAULT 'anonymous',
   size_bytes BIGINT NOT NULL,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
@@ -27,3 +29,6 @@ CREATE INDEX IF NOT EXISTS idx_jobs_submission_id
 
 CREATE INDEX IF NOT EXISTS idx_submissions_storage_key
   ON submissions(storage_key);
+
+CREATE INDEX IF NOT EXISTS idx_submissions_institution
+  ON submissions(institution_id);

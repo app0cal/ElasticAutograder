@@ -13,19 +13,32 @@ Run this from the project root:
 kind create cluster --config k8s\kind-config.yaml
 ```
 
-### 2) Verify cluster is up
+The local kind config uses one control-plane node and two worker nodes so burst
+tests can schedule more than one grader pod at a time.
+
+### 2) Create the grader namespace and RBAC
+
+```bash
+kubectl apply -f k8s\grading-namespace-rbac.yaml
+```
+
+The backend still runs locally by default and uses your kubeconfig to create
+grader resources in the `elastic-grading` namespace.
+
+### 3) Verify cluster is up
 
 ```bash
 kubectl get nodes
+kubectl get namespace elastic-grading
 kubectl cluster-info
 ```
 
-### 3) Verify a test run of pods in kubernetes
+### 4) Verify a test run of pods in kubernetes
 
 ```bash
-kubectl run hello-test --image=busybox --restart=Never -- echo hello
-kubectl get pods
-kubectl logs hello-test
+kubectl run hello-test --namespace elastic-grading --image=busybox --restart=Never -- echo hello
+kubectl get pods --namespace elastic-grading
+kubectl logs hello-test --namespace elastic-grading
 ```
 
 This should output the following: 

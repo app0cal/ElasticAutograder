@@ -12,6 +12,17 @@ The intended direction is:
 - Mock institution/user identity so jobs can be scoped like a university autograder.
 - Shared durable submission storage so workers on different nodes can process the same queued jobs.
 - Better operational visibility for queued, running, failed, retried, and completed jobs.
+- Minimal console logging for queue, worker, job lifecycle, and Kubernetes cleanup events without writing local log files.
+
+## Logging Model
+
+The backend should use SLF4J console logging only. Do not add file appenders or request/body logging unless a later operations goal explicitly needs it.
+
+Current logging policy:
+- `INFO` for job queued, worker consumed job, job started, and job finished.
+- `WARN` for malformed queue messages, Redis poll failures, and Kubernetes cleanup failures.
+- `ERROR` for persisted job execution failures.
+- Never log submission contents, uploaded file contents, result JSON bodies, or full Redis payloads.
 
 ## Worker And Storage Model
 
@@ -210,7 +221,7 @@ The backend can enqueue grading work into Redis, and one or more worker consumer
 
 ## Goal 5: Add Job Attempt, Retry, And Dead-Letter Tracking
 
-Status: Not Started
+Status: Finished
 
 ### Problem
 
@@ -236,7 +247,7 @@ Not finished yet.
 
 ## Goal 6: Add Mock Institution And User Ownership
 
-Status: Not Started
+Status: Finished
 
 ### Problem
 
@@ -253,10 +264,19 @@ Jobs and submissions store institution/user ownership, and job list/detail queri
 - Default missing headers to `local` and `anonymous`.
 - Scope recent job queries by institution by default.
 - Return ownership metadata in job detail responses.
+- Scope grader catalogs by institution while keeping JSON as the current catalog source.
+- Keep grader catalog access behind an interface so a Postgres-backed catalog can replace JSON later.
 
 ### Completion Notes
 
-Not finished yet.
+- Added ownership fields to jobs and submissions.
+- Uploads now persist `institution_id` and `submitted_by`, and Redis queue messages use persisted ownership.
+- Recent jobs, job detail, result download, and manual enqueue paths resolve mock identity headers and scope by institution.
+- `JobResponse` now includes `institutionId` and `submittedBy`; job details renders both fields.
+- Added `GraderCatalogProvider` with a JSON-backed implementation so future Postgres-backed grader catalogs can be swapped in behind the same interface.
+- `config/graders.json` is now institution-scoped with `institutionId` and optional `graderFolder`.
+- The frontend has a mock identity control stored in local storage and sends identity headers for grader, upload, job, result, and manual run API calls.
+- Backend tests and frontend lint passed.
 
 ## Goal 7: Prepare Kubernetes And kind For Multi-Worker Grading
 
@@ -284,7 +304,16 @@ The backend can run many grader jobs safely in kind and later in a production-li
 
 ### Completion Notes
 
-Not finished yet.
+- Added `KubernetesGradingProperties` for namespace, job TTL, poll interval, max active Kubernetes jobs, and future cleanup behavior.
+- `Fabric8GradingOrchestrator` now uses the configured namespace instead of hardcoded `default`.
+- ConfigMaps, Jobs, and Pods now include labels/annotations for `job-id`, `institution-id`, and `grader-type`.
+- Grader Jobs use configurable TTL while keeping each grader's timeout as `activeDeadlineSeconds`.
+- Added a max-active Kubernetes job guard so local worker threads do not submit unlimited grader Jobs into the cluster.
+- Expanded `k8s/kind-config.yaml` to one control-plane and two worker nodes for local burst tests.
+- Added `k8s/grading-namespace-rbac.yaml` for the `elastic-grading` namespace and grader resource permissions.
+- Updated stale Kubernetes reference manifests and `k8s/readme.md`.
+- Backend tests passed.
+- Capacity pressure currently fails fast with a Kubernetes error. Goal 5/9 should later requeue, retry, or surface queue-health state instead of treating capacity as a final failure.
 
 ## Goal 8: Update Frontend Submission Flow For Queued Jobs
 
@@ -334,6 +363,7 @@ Developers can quickly tell whether jobs are queued, running, blocked, retrying,
 - Add worker heartbeat or worker id tracking.
 - Add a way to identify jobs stuck in `RUNNING` past their timeout.
 - Add logs around enqueue, claim, Kubernetes start, Kubernetes finish, retry, and final failure.
+- Minimal console logs already exist for enqueue, worker consumption, job start/finish/failure, malformed queue messages, Redis poll failures, and ConfigMap cleanup warnings.
 - Consider a simple admin/debug endpoint for queue health before adding any complex dashboard.
 
 ### Completion Notes

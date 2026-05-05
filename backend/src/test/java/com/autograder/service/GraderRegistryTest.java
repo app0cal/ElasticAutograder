@@ -10,8 +10,8 @@ import static org.mockito.Mockito.when;
 import org.junit.jupiter.api.Test;
 import org.mockito.Mockito;
 
-import com.autograder.config.GraderConfigLoader;
 import com.autograder.model.GraderDefinition;
+import com.autograder.service.grader.GraderCatalogProvider;
 
 class GraderRegistryTest {
 
@@ -135,14 +135,23 @@ class GraderRegistryTest {
      */
     @Test
     void loaderConstructor_registersGradersFromConfigLoader() {
-        GraderConfigLoader loader = Mockito.mock(GraderConfigLoader.class);
-        when(loader.loadGraders()).thenReturn(List.of(
-                createGrader("fib", "Fibonacci", "ea-grader-fibbonaci:v1")
-        ));
+        GraderDefinition grader = createGrader("fib", "Fibonacci", "ea-grader-fibbonaci:v1");
+        GraderCatalogProvider provider = Mockito.mock(GraderCatalogProvider.class);
+        when(provider.findByInstitutionAndKey("local", "fib")).thenReturn(java.util.Optional.of(grader));
+        when(provider.findByInstitution("local")).thenReturn(List.of(grader));
 
-        GraderRegistry registry = new GraderRegistry(loader);
+        GraderRegistry registry = new GraderRegistry(provider);
 
         assertEquals("Fibonacci", registry.getRequired("fib").getLabel());
         assertEquals(1, registry.getAll().size());
+    }
+
+    @Test
+    void getRequired_scopedInstitution_returnsMatchingGrader() {
+        GraderDefinition grader = createGrader("fib", "University A Fibonacci", "ea-grader-university-a-fib:v1");
+        grader.setInstitutionId("university-a");
+        GraderRegistry registry = new GraderRegistry(List.of(grader));
+
+        assertEquals("University A Fibonacci", registry.getRequired("university-a", "fib").getLabel());
     }
 }
