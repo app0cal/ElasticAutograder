@@ -1,8 +1,6 @@
 package com.autograder.service;
 
-import java.nio.file.Files;
-import java.nio.file.Path;
-
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.annotation.Primary;
 import org.springframework.stereotype.Service;
 
@@ -18,6 +16,8 @@ import tools.jackson.databind.ObjectMapper;
 
 import com.autograder.model.FailureReason;
 import com.autograder.model.GraderDefinition;
+import com.autograder.service.submission.LocalSubmissionStorageService;
+import com.autograder.service.submission.SubmissionStorageService;
 
 /**
  * Main grading orchestrator implementation backed by the Fabric8 Kubernetes client.
@@ -37,12 +37,11 @@ public class Fabric8GradingOrchestrator implements GradingOrchestrator {
     // Local JSON mapper used to parse grader output returned from pod logs.
     private final ObjectMapper objectMapper = new ObjectMapper();
 
-    // Local folder where uploaded submissions are temporarily staged before being put into kubernetes through a configMap
-    private static final Path UPLOAD_ROOT = Path.of("grading/uploads");
     private static final String NAMESPACE = "default";
 
     private final KubernetesClient kubernetesClient;
     private final GraderRegistry graderRegistry;
+    private final SubmissionStorageService submissionStorageService;
 
     /**
      * Constructor for Fabric8GradingOrchestrator with: 
@@ -53,8 +52,18 @@ public class Fabric8GradingOrchestrator implements GradingOrchestrator {
      * @param graderRegistry registry used to resolve grader metadata from the selected grader key
      */
     public Fabric8GradingOrchestrator(KubernetesClient kubernetesClient, GraderRegistry graderRegistry) {
+        this(kubernetesClient, graderRegistry, new LocalSubmissionStorageService());
+    }
+
+    @Autowired
+    public Fabric8GradingOrchestrator(
+            KubernetesClient kubernetesClient,
+            GraderRegistry graderRegistry,
+            SubmissionStorageService submissionStorageService
+    ) {
         this.kubernetesClient = kubernetesClient;
         this.graderRegistry = graderRegistry;
+        this.submissionStorageService = submissionStorageService;
     }
 
     /**
@@ -82,7 +91,7 @@ public class Fabric8GradingOrchestrator implements GradingOrchestrator {
         }
         GraderDefinition grader = graderRegistry.getRequired(graderType);
 
-        String cleanedFileName = sanitizeSubmissionPath(fileName);
+        String cleanedFileName = submissionStorageService.sanitizeSubmissionKey(fileName);
         String configMapName = "submission-job-" + jobId;
 
         try{
@@ -127,16 +136,8 @@ public class Fabric8GradingOrchestrator implements GradingOrchestrator {
      * @throws Exception if the submission file cannot be found or read
      */
     public ConfigMap createSubmissionConfigMap(Long jobId, String fileName) throws Exception {
-        String cleanedFileName = sanitizeSubmissionPath(fileName);
-        Path submissionPath = resolveSubmissionPath(cleanedFileName);
-
-        if (!Files.exists(submissionPath)) {
-            throw new IllegalArgumentException("Submission file not found: " + cleanedFileName);
-        }
-
-        String submissionContents = Files.readString(submissionPath);
-        String configMapName = "submission-job-" + jobId;
-
+        String cleanedFileName = submissionStorageService.sanitizeSubmissionKey(fileName);
+        String submissionContents = submissionStorageService.readSubmission(cleanedFileName);
         ConfigMap configMap = buildSubmissionConfigMap(jobId, submissionContents);
 
         return kubernetesClient.configMaps()
@@ -432,47 +433,6 @@ public class Fabric8GradingOrchestrator implements GradingOrchestrator {
         }
 
         return defaultMessage;
-    }
-
-    // Additional helper methods for cleanup, etc. can be added below
-
-    // basic sanitization to prevent issues can be enhanced as needed
-    private String sanitizeSubmissionPath(String rawSubmissionPath) {
-        if (rawSubmissionPath == null) {
-            throw new IllegalArgumentException("File name is required.");
-        }
-
-        String cleaned = rawSubmissionPath.trim();
-
-        if (cleaned.startsWith("\"") && cleaned.endsWith("\"") && cleaned.length() >= 2) {
-            cleaned = cleaned.substring(1, cleaned.length() - 1).trim();
-        }
-
-        if (cleaned.isBlank()) {
-            throw new IllegalArgumentException("File name is required.");
-        }
-
-        cleaned = cleaned.replace('\\', '/');
-        Path normalized = Path.of(cleaned).normalize();
-
-        if (normalized.isAbsolute() || normalized.startsWith("..")) {
-            throw new IllegalArgumentException("Invalid file name.");
-        }
-
-        String normalizedString = normalized.toString().replace('\\', '/');
-        if (normalizedString.isBlank() || normalizedString.equals(".")) {
-            throw new IllegalArgumentException("File name is required.");
-        }
-
-        return normalizedString;
-    }
-
-    private Path resolveSubmissionPath(String submissionPath) {
-        Path resolved = UPLOAD_ROOT.resolve(submissionPath).normalize();
-        if (!resolved.startsWith(UPLOAD_ROOT)) {
-            throw new IllegalArgumentException("Invalid file name.");
-        }
-        return resolved;
     }
 
     // Cleanup method to delete ConfigMap and Job after completion

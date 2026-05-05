@@ -35,10 +35,18 @@ import com.autograder.model.GraderDefinition;
 import com.autograder.model.Job;
 import com.autograder.model.JobStatus;
 import com.autograder.repository.JobRepository;
-import com.autograder.service.Fabric8GradingOrchestrator;
 import com.autograder.service.GradingFailureException;
 import com.autograder.service.GradingOrchestrator;
 import com.autograder.service.GraderRegistry;
+import com.autograder.service.LocalGraderSetupStatus;
+import com.autograder.service.dispatch.SynchronousJobDispatcher;
+import com.autograder.service.grader.GraderCatalogService;
+import com.autograder.service.identity.RequestIdentityProvider;
+import com.autograder.service.job.JobExecutionService;
+import com.autograder.service.job.JobQueryService;
+import com.autograder.service.job.JobResultMapper;
+import com.autograder.service.job.JobSubmissionService;
+import com.autograder.service.submission.LocalSubmissionStorageService;
 
 import tools.jackson.databind.ObjectMapper;
 import tools.jackson.databind.node.ObjectNode;
@@ -47,11 +55,14 @@ import tools.jackson.databind.node.ArrayNode;
 public class JobControllerTest {
 
     private JobRepository jobRepository;
-    private JobController jobController;
+    private JobSubmissionController jobSubmissionController;
+    private JobExecutionController jobExecutionController;
+    private JobQueryController jobQueryController;
+    private GraderController graderController;
+    private UploadFileController uploadFileController;
 
     // new part of the mock testing 
     private GradingOrchestrator gradingOrchestrator;
-    private Fabric8GradingOrchestrator fabric8GradingOrchestrator;
     private GraderRegistry graderRegistry;
     private final ObjectMapper objectMapper = new ObjectMapper();
     
@@ -59,15 +70,32 @@ public class JobControllerTest {
     void setUp() throws Exception {
         jobRepository = Mockito.mock(JobRepository.class);
         gradingOrchestrator = Mockito.mock(GradingOrchestrator.class);
-        fabric8GradingOrchestrator = Mockito.mock(Fabric8GradingOrchestrator.class);
         graderRegistry = Mockito.mock(GraderRegistry.class);
 
-        jobController = new JobController(
+        LocalGraderSetupStatus graderSetupStatus = new LocalGraderSetupStatus();
+        LocalSubmissionStorageService submissionStorageService = new LocalSubmissionStorageService();
+        RequestIdentityProvider requestIdentityProvider = new RequestIdentityProvider();
+        JobResultMapper jobResultMapper = new JobResultMapper();
+
+        JobSubmissionService jobSubmissionService = new JobSubmissionService(
                 jobRepository,
-                gradingOrchestrator,
-                fabric8GradingOrchestrator,
-                graderRegistry
+                graderRegistry,
+                graderSetupStatus,
+                submissionStorageService
         );
+        JobExecutionService jobExecutionService = new JobExecutionService(
+                jobRepository,
+                graderSetupStatus,
+                submissionStorageService,
+                new SynchronousJobDispatcher(gradingOrchestrator),
+                jobResultMapper
+        );
+
+        jobSubmissionController = new JobSubmissionController(jobSubmissionService, requestIdentityProvider);
+        jobExecutionController = new JobExecutionController(jobExecutionService, requestIdentityProvider);
+        jobQueryController = new JobQueryController(new JobQueryService(jobRepository));
+        graderController = new GraderController(new GraderCatalogService(graderRegistry));
+        uploadFileController = new UploadFileController(submissionStorageService);
 
         when(graderRegistry.getRequired(any(String.class)))
                 .thenReturn(new GraderDefinition("fib", "Fibonacci", "python:3.12", "manifest.json"));
@@ -110,7 +138,7 @@ public class JobControllerTest {
                 "print('hello')".getBytes()
         );
 
-        ResponseEntity<Map<String,Object>> response = jobController.uploadFile(file,"fib");
+        ResponseEntity<Map<String,Object>> response = jobSubmissionController.uploadFile(file,"fib", null, null);
 
         assertEquals(200, response.getStatusCode().value());
         assertEquals("Successfully uploaded file.", response.getBody().get("message"));
@@ -135,10 +163,10 @@ public class JobControllerTest {
                 "print('hello')".getBytes()
         );
 
-        ResponseEntity<Map<String,Object>> first = jobController.uploadFile(file,"fib");
+        ResponseEntity<Map<String,Object>> first = jobSubmissionController.uploadFile(file,"fib", null, null);
         assertEquals(200, first.getStatusCode().value());
 
-        ResponseEntity<Map<String,Object>> second = jobController.uploadFile(file,"fib");
+        ResponseEntity<Map<String,Object>> second = jobSubmissionController.uploadFile(file,"fib", null, null);
         assertEquals(400, second.getStatusCode().value());
         assertEquals("File with this name already exists.", second.getBody().get("message"));
     }
@@ -161,7 +189,7 @@ public class JobControllerTest {
                 )
         );
 
-        ResponseEntity<Map<String, Object>> response = jobController.uploadFile(zipFile, "fib");
+        ResponseEntity<Map<String, Object>> response = jobSubmissionController.uploadFile(zipFile, "fib", null, null);
 
         assertEquals(200, response.getStatusCode().value());
         assertEquals("Successfully uploaded batch.", response.getBody().get("message"));
@@ -201,7 +229,7 @@ public class JobControllerTest {
                 )
         );
 
-        ResponseEntity<Map<String, Object>> response = jobController.uploadFile(zipFile, "fib");
+        ResponseEntity<Map<String, Object>> response = jobSubmissionController.uploadFile(zipFile, "fib", null, null);
 
         assertEquals(200, response.getStatusCode().value());
         assertEquals("Successfully uploaded file.", response.getBody().get("message"));
@@ -229,7 +257,7 @@ public class JobControllerTest {
                 )
         );
 
-        ResponseEntity<Map<String, Object>> response = jobController.uploadFile(zipFile, "fib");
+        ResponseEntity<Map<String, Object>> response = jobSubmissionController.uploadFile(zipFile, "fib", null, null);
 
         assertEquals(400, response.getStatusCode().value());
         assertEquals("Zip archive contains duplicate file names: duplicate.py", response.getBody().get("message"));
@@ -248,7 +276,7 @@ public class JobControllerTest {
                 zipBytes(Map.of())
         );
 
-        ResponseEntity<Map<String, Object>> response = jobController.uploadFile(zipFile, "fib");
+        ResponseEntity<Map<String, Object>> response = jobSubmissionController.uploadFile(zipFile, "fib", null, null);
 
         assertEquals(400, response.getStatusCode().value());
         assertEquals("Zip archive does not contain any files.", response.getBody().get("message"));
@@ -267,7 +295,7 @@ public class JobControllerTest {
                 zipBytesWithDirectoriesOnly("nested/", "nested/deeper/")
         );
 
-        ResponseEntity<Map<String, Object>> response = jobController.uploadFile(zipFile, "fib");
+        ResponseEntity<Map<String, Object>> response = jobSubmissionController.uploadFile(zipFile, "fib", null, null);
 
         assertEquals(400, response.getStatusCode().value());
         assertEquals("Zip archive does not contain any files.", response.getBody().get("message"));
@@ -290,7 +318,7 @@ public class JobControllerTest {
                 )
         );
 
-        ResponseEntity<Map<String, Object>> response = jobController.uploadFile(zipFile, "fib");
+        ResponseEntity<Map<String, Object>> response = jobSubmissionController.uploadFile(zipFile, "fib", null, null);
 
         assertEquals(400, response.getStatusCode().value());
         assertEquals("Zip archive contains an invalid file path.", response.getBody().get("message"));
@@ -311,7 +339,7 @@ public class JobControllerTest {
                 "print('hello')".getBytes()
         );
 
-        ResponseEntity<Map<String, Object>> response = jobController.uploadFile(file, "missing");
+        ResponseEntity<Map<String, Object>> response = jobSubmissionController.uploadFile(file, "missing", null, null);
 
         assertEquals(400, response.getStatusCode().value());
         assertEquals("Unknown grader key: missing", response.getBody().get("message"));
@@ -331,7 +359,7 @@ public class JobControllerTest {
                 "print('hello')".getBytes()
         );
 
-        ResponseEntity<Map<String, Object>> response = jobController.uploadFile(file, "fib");
+        ResponseEntity<Map<String, Object>> response = jobSubmissionController.uploadFile(file, "fib", null, null);
 
         assertEquals(400, response.getStatusCode().value());
         assertEquals("File name is required.", response.getBody().get("message"));
@@ -350,7 +378,7 @@ public class JobControllerTest {
                 "print('hello')".getBytes()
         );
 
-        ResponseEntity<Map<String, Object>> response = jobController.uploadFile(file, "fib");
+        ResponseEntity<Map<String, Object>> response = jobSubmissionController.uploadFile(file, "fib", null, null);
 
         assertEquals(400, response.getStatusCode().value());
         assertEquals("Invalid file name.", response.getBody().get("message"));
@@ -374,7 +402,7 @@ public class JobControllerTest {
             }
         };
 
-        ResponseEntity<Map<String, Object>> response = jobController.uploadFile(file, "fib");
+        ResponseEntity<Map<String, Object>> response = jobSubmissionController.uploadFile(file, "fib", null, null);
 
         assertEquals(500, response.getStatusCode().value());
         assertEquals("Failed to save uploaded file.", response.getBody().get("message"));
@@ -391,7 +419,7 @@ public class JobControllerTest {
         Job second = new Job("b.py", "fib", OffsetDateTime.now(), JobStatus.SUCCEEDED);
         when(jobRepository.findAllOrderByCreatedAtDesc()).thenReturn(List.of(first, second));
 
-        ResponseEntity<List<Job>> response = jobController.getRecentJobs();
+        ResponseEntity<List<Job>> response = jobQueryController.getRecentJobs();
 
         assertEquals(200, response.getStatusCode().value());
         assertEquals(List.of(first, second), response.getBody());
@@ -410,7 +438,7 @@ public class JobControllerTest {
         fib.setDetails(List.of("Return the nth Fibonacci number."));
         when(graderRegistry.getAll()).thenReturn(List.of(fib));
 
-        ResponseEntity<List<com.autograder.dto.GraderOptionResponse>> response = jobController.getGraders();
+        ResponseEntity<List<com.autograder.dto.GraderOptionResponse>> response = graderController.getGraders();
 
         assertEquals(200, response.getStatusCode().value());
         assertEquals(1, response.getBody().size());
@@ -429,7 +457,7 @@ public class JobControllerTest {
         Job job = new Job("submission.py", "fib", OffsetDateTime.now(), JobStatus.QUEUED);
         when(jobRepository.findById(7L)).thenReturn(Optional.of(job));
 
-        ResponseEntity<?> response = jobController.getJobById(7L);
+        ResponseEntity<?> response = jobQueryController.getJobById(7L);
 
         assertEquals(200, response.getStatusCode().value());
         assertEquals(job, response.getBody());
@@ -443,7 +471,7 @@ public class JobControllerTest {
     void getJobById_missingId_returns404() {
         when(jobRepository.findById(77L)).thenReturn(Optional.empty());
 
-        ResponseEntity<?> response = jobController.getJobById(77L);
+        ResponseEntity<?> response = jobQueryController.getJobById(77L);
 
         assertEquals(404, response.getStatusCode().value());
         assertEquals("Unable to find job with id: 77", response.getBody());
@@ -474,7 +502,7 @@ public class JobControllerTest {
 
         when(gradingOrchestrator.runJobInKubernetes(11L, "batch-123/submission.py", "fib")).thenReturn(result);
 
-        ResponseEntity<?> response = jobController.runJob(11L, "\"submission.py\"");
+        ResponseEntity<?> response = jobExecutionController.runJob(11L, "\"submission.py\"", null, null);
 
         assertEquals(200, response.getStatusCode().value());
         assertEquals(JobStatus.PARTIAL, job.getStatus());
@@ -514,7 +542,7 @@ public class JobControllerTest {
 
         when(gradingOrchestrator.runJobInKubernetes(14L, "batch-123/submission.py", "fib")).thenReturn(result);
 
-        ResponseEntity<?> response = jobController.runJob(14L, "\"submission.py\"");
+        ResponseEntity<?> response = jobExecutionController.runJob(14L, "\"submission.py\"", null, null);
 
         assertEquals(200, response.getStatusCode().value());
         assertEquals(JobStatus.FAILED, job.getStatus());
@@ -550,7 +578,7 @@ public class JobControllerTest {
 
         when(gradingOrchestrator.runJobInKubernetes(15L, "batch-123/dog.py", "fib")).thenReturn(result);
 
-        ResponseEntity<?> response = jobController.runJob(15L, "\"dog.py\"");
+        ResponseEntity<?> response = jobExecutionController.runJob(15L, "\"dog.py\"", null, null);
 
         assertEquals(200, response.getStatusCode().value());
         assertEquals(JobStatus.FAILED, job.getStatus());
@@ -582,7 +610,7 @@ public class JobControllerTest {
 
         when(gradingOrchestrator.runJobInKubernetes(24L, "body-submission.py", "fib")).thenReturn(result);
 
-        ResponseEntity<?> response = jobController.runJob(24L, "\"body-submission.py\"");
+        ResponseEntity<?> response = jobExecutionController.runJob(24L, "\"body-submission.py\"", null, null);
 
         assertEquals(200, response.getStatusCode().value());
         assertEquals(JobStatus.SUCCEEDED, job.getStatus());
@@ -601,7 +629,7 @@ public class JobControllerTest {
         job.setResultJson("[{\"kind\":\"test\",\"name\":\"case_1\",\"passed\":false}]");
         when(jobRepository.findById(12L)).thenReturn(Optional.of(job));
 
-        ResponseEntity<String> response = jobController.downloadResults(12L, true);
+        ResponseEntity<String> response = jobQueryController.downloadResults(12L, true);
 
         assertEquals(200, response.getStatusCode().value());
         assertTrue(response.getBody().contains("\"case_1\""));
@@ -625,7 +653,7 @@ public class JobControllerTest {
         when(gradingOrchestrator.runJobInKubernetes(13L, "batch-123/submission.py", "fib"))
                 .thenThrow(new GradingFailureException(FailureReason.TIMEOUT, "Timed out"));
 
-        ResponseEntity<?> response = jobController.runJob(13L, "\"submission.py\"");
+        ResponseEntity<?> response = jobExecutionController.runJob(13L, "\"submission.py\"", null, null);
 
         assertEquals(500, response.getStatusCode().value());
         assertInstanceOf(tools.jackson.databind.node.StringNode.class, response.getBody());
@@ -642,7 +670,7 @@ public class JobControllerTest {
     void runJob_missingJob_returns404() {
         when(jobRepository.findById(404L)).thenReturn(Optional.empty());
 
-        ResponseEntity<?> response = jobController.runJob(404L, "\"submission.py\"");
+        ResponseEntity<?> response = jobExecutionController.runJob(404L, "\"submission.py\"", null, null);
 
         assertEquals(404, response.getStatusCode().value());
         assertInstanceOf(tools.jackson.databind.node.StringNode.class, response.getBody());
@@ -660,7 +688,7 @@ public class JobControllerTest {
         job.setSubmissionPath("../secret.py");
         when(jobRepository.findById(16L)).thenReturn(Optional.of(job));
 
-        ResponseEntity<?> response = jobController.runJob(16L, "\"submission.py\"");
+        ResponseEntity<?> response = jobExecutionController.runJob(16L, "\"submission.py\"", null, null);
 
         assertEquals(400, response.getStatusCode().value());
         assertEquals(JobStatus.FAILED, job.getStatus());
@@ -681,7 +709,7 @@ public class JobControllerTest {
         when(gradingOrchestrator.runJobInKubernetes(17L, "batch-123/submission.py", "fib"))
                 .thenThrow(new RuntimeException("cluster exploded"));
 
-        ResponseEntity<?> response = jobController.runJob(17L, "\"submission.py\"");
+        ResponseEntity<?> response = jobExecutionController.runJob(17L, "\"submission.py\"", null, null);
 
         assertEquals(500, response.getStatusCode().value());
         assertEquals(JobStatus.FAILED, job.getStatus());
@@ -706,7 +734,7 @@ public class JobControllerTest {
         ArrayNode results = result.putArray("results");
         results.addObject().put("name", "case_1").put("passed", true);
 
-        ResponseEntity<String> response = jobController.updateJob(18L, result);
+        ResponseEntity<String> response = jobExecutionController.updateJob(18L, result);
 
         assertEquals(200, response.getStatusCode().value());
         assertEquals("Successfully updated job.", response.getBody());
@@ -726,7 +754,7 @@ public class JobControllerTest {
     void updateJob_missingJob_returns404() {
         when(jobRepository.findById(19L)).thenReturn(Optional.empty());
 
-        ResponseEntity<String> response = jobController.updateJob(19L, objectMapper.createObjectNode());
+        ResponseEntity<String> response = jobExecutionController.updateJob(19L, objectMapper.createObjectNode());
 
         assertEquals(404, response.getStatusCode().value());
         assertEquals("Unable to find existing job with id 19", response.getBody());
@@ -741,7 +769,7 @@ public class JobControllerTest {
         Job job = new Job("submission.py", "fib", OffsetDateTime.now(), JobStatus.RUNNING);
         when(jobRepository.findById(20L)).thenReturn(Optional.of(job));
 
-        ResponseEntity<String> response = jobController.updateJob(20L, objectMapper.createObjectNode());
+        ResponseEntity<String> response = jobExecutionController.updateJob(20L, objectMapper.createObjectNode());
 
         assertEquals(500, response.getStatusCode().value());
         assertTrue(response.getBody().contains("Failed to update job"));
@@ -759,7 +787,7 @@ public class JobControllerTest {
         Path file = uploadDir.resolve("remove-me.py");
         Files.writeString(file, "print('remove')");
 
-        ResponseEntity<String> response = jobController.removeFile("remove-me.py");
+        ResponseEntity<String> response = uploadFileController.removeFile("remove-me.py");
 
         assertEquals(200, response.getStatusCode().value());
         assertEquals("Successfully deleted file.", response.getBody());
@@ -772,7 +800,7 @@ public class JobControllerTest {
      */
     @Test
     void removeFile_missingFile_returns404() {
-        ResponseEntity<String> response = jobController.removeFile("missing.py");
+        ResponseEntity<String> response = uploadFileController.removeFile("missing.py");
 
         assertEquals(404, response.getStatusCode().value());
         assertEquals("File not found.", response.getBody());
@@ -784,7 +812,7 @@ public class JobControllerTest {
      */
     @Test
     void removeFile_pathTraversal_returns400() {
-        ResponseEntity<String> response = jobController.removeFile("../secret.py");
+        ResponseEntity<String> response = uploadFileController.removeFile("../secret.py");
 
         assertEquals(400, response.getStatusCode().value());
         assertEquals("Invalid file name.", response.getBody());
@@ -798,7 +826,7 @@ public class JobControllerTest {
     void downloadResults_missingJob_returns404() throws Exception {
         when(jobRepository.findById(21L)).thenReturn(Optional.empty());
 
-        ResponseEntity<String> response = jobController.downloadResults(21L, true);
+        ResponseEntity<String> response = jobQueryController.downloadResults(21L, true);
 
         assertEquals(404, response.getStatusCode().value());
         assertEquals("Unable to find job with id: 21", response.getBody());
@@ -813,7 +841,7 @@ public class JobControllerTest {
         Job job = new Job("submission.py", "fib", OffsetDateTime.now(), JobStatus.QUEUED);
         when(jobRepository.findById(22L)).thenReturn(Optional.of(job));
 
-        ResponseEntity<String> response = jobController.downloadResults(22L, true);
+        ResponseEntity<String> response = jobQueryController.downloadResults(22L, true);
 
         assertEquals(404, response.getStatusCode().value());
         assertEquals("Unable to get results for id: 22", response.getBody());
@@ -829,7 +857,7 @@ public class JobControllerTest {
         job.setResultJson("[{\"name\":\"case_1\",\"passed\":true}]");
         when(jobRepository.findById(23L)).thenReturn(Optional.of(job));
 
-        ResponseEntity<String> response = jobController.downloadResults(23L, false);
+        ResponseEntity<String> response = jobQueryController.downloadResults(23L, false);
 
         assertEquals(200, response.getStatusCode().value());
         assertTrue(response.getBody().contains("\"case_1\""));
