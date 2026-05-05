@@ -31,17 +31,20 @@ public class JobSubmissionService {
     private final GraderRegistry graderRegistry;
     private final LocalGraderSetupStatus graderSetupStatus;
     private final SubmissionStorageService submissionStorageService;
+    private final JobExecutionService jobExecutionService;
 
     public JobSubmissionService(
             JobRepository jobRepository,
             GraderRegistry graderRegistry,
             LocalGraderSetupStatus graderSetupStatus,
-            SubmissionStorageService submissionStorageService
+            SubmissionStorageService submissionStorageService,
+            JobExecutionService jobExecutionService
     ) {
         this.jobRepository = jobRepository;
         this.graderRegistry = graderRegistry;
         this.graderSetupStatus = graderSetupStatus;
         this.submissionStorageService = submissionStorageService;
+        this.jobExecutionService = jobExecutionService;
     }
 
     /**
@@ -74,9 +77,13 @@ public class JobSubmissionService {
                 uploadedJobs.add(new UploadedJobSummary(job.getId(), job.getOriginalFilename()));
             }
 
+            for (Job createdJob : createdJobs) {
+                jobExecutionService.enqueueJob(createdJob.getId(), identity);
+            }
+
             String message = uploadedJobs.size() == 1
-                    ? "Successfully uploaded file."
-                    : "Successfully uploaded batch.";
+                    ? "Successfully queued file."
+                    : "Successfully queued batch.";
             return new UploadJobResponse(message, uploadedJobs);
         } catch (RuntimeException e) {
             cleanupCreatedJobs(createdJobs);
@@ -87,6 +94,7 @@ public class JobSubmissionService {
 
     private Job createQueuedJob(StoredSubmission submission, String graderType, GraderDefinition grader) {
         Job job = new Job(submission.originalFileName(), graderType, OffsetDateTime.now(), JobStatus.QUEUED);
+        job.setSubmissionId(submission.submissionId());
         job.setSubmissionPath(submission.key());
         job.setGraderImage(grader.getImageName());
         return jobRepository.save(job);

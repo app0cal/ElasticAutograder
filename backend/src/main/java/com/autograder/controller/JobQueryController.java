@@ -14,11 +14,11 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
-import com.autograder.model.Job;
 import com.autograder.service.job.DownloadedJobResult;
 import com.autograder.service.job.JobNotFoundException;
 import com.autograder.service.job.JobQueryService;
 import com.autograder.service.job.JobResultUnavailableException;
+import com.autograder.service.job.JobResponse;
 
 /**
  * REST controller for reading job history, details, and stored result JSON.
@@ -35,7 +35,7 @@ public class JobQueryController {
     }
 
     @GetMapping("/jobs/recent")
-    public ResponseEntity<List<Job>> getRecentJobs() {
+    public ResponseEntity<List<JobResponse>> getRecentJobs() {
         return ResponseEntity.ok(jobQueryService.getRecentJobs());
     }
 

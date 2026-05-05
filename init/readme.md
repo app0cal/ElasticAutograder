@@ -14,3 +14,9 @@ docker exec -i ea-postgres psql -U postgres -d elastic_autograder < init\update_
 
 That update script is the right choice after pulling schema changes for the newer
 job states and failure reasons, such as `PARTIAL`, `CONFIG_ERROR`, and `UNKNOWN`.
+
+If your database already exists and you need to add durable submission storage
+without dropping existing job history, run:
+```bash
+docker exec -i ea-postgres psql -U postgres -d elastic_autograder < init\add_submission_storage.sql
+```

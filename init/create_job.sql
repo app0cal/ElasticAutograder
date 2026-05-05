@@ -1,6 +1,16 @@
--- developer note I think I've dropped and re added this table like 50 times over lol
--- so adding this for re creating table
 DROP TABLE IF EXISTS jobs CASCADE;
+DROP TABLE IF EXISTS submissions CASCADE;
+
+-- Uploaded submission content shared by backend and worker pods.
+CREATE TABLE submissions (
+  id BIGSERIAL PRIMARY KEY,
+  storage_key UUID NOT NULL UNIQUE,
+  original_filename TEXT NOT NULL,
+  content TEXT NOT NULL,
+  content_type TEXT,
+  size_bytes BIGINT NOT NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
 
 -- Main jobs table
 CREATE TABLE jobs (
@@ -9,6 +19,7 @@ CREATE TABLE jobs (
   grader_type TEXT NOT NULL,
   original_filename TEXT NOT NULL,
   submission_path TEXT,
+  submission_id BIGINT REFERENCES submissions(id),
   grader_image TEXT,
 
   status TEXT NOT NULL CHECK (
@@ -58,8 +69,14 @@ CREATE INDEX idx_jobs_grader_type
 CREATE INDEX idx_jobs_created_at
   ON jobs(created_at DESC);
 
+CREATE INDEX idx_jobs_submission_id
+  ON jobs(submission_id);
+
 CREATE INDEX idx_jobs_k8s_job_name
   ON jobs(k8s_job_name);
+
+CREATE INDEX idx_submissions_storage_key
+  ON submissions(storage_key);
 
 -- Helper function to refresh updated_at on row updates
 CREATE OR REPLACE FUNCTION set_updated_at()

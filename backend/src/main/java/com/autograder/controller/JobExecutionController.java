@@ -12,10 +12,10 @@ import org.springframework.web.bind.annotation.RestController;
 
 import com.autograder.service.identity.RequestIdentity;
 import com.autograder.service.identity.RequestIdentityProvider;
+import com.autograder.service.job.JobEnqueueResponse;
 import com.autograder.service.job.JobExecutionService;
 import com.autograder.service.job.JobIntakeUnavailableException;
 import com.autograder.service.job.JobNotFoundException;
-import com.autograder.service.job.RunJobResult;
 
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.node.StringNode;
@@ -40,13 +40,13 @@ public class JobExecutionController {
     }
 
     /**
-     * Runs a staged submission through the configured job dispatcher.
+     * Queues a staged submission through the configured job dispatcher.
      *
      * @param id job id to run
-     * @param fileName legacy request body containing the staged file name
+     * @param fileName legacy request body, ignored after jobs store submission keys
      * @param institutionHeader optional mock institution header
      * @param userHeader optional mock user header
-     * @return grader result JSON or an error message node
+     * @return accepted response or an error message node
      */
     @PostMapping("/jobs/run/{id}")
     public ResponseEntity<JsonNode> runJob(
@@ -57,13 +57,16 @@ public class JobExecutionController {
     ) {
         try {
             RequestIdentity identity = requestIdentityProvider.resolve(institutionHeader, userHeader);
-            RunJobResult result = jobExecutionService.runJob(id, fileName, identity);
+            JobEnqueueResponse result = jobExecutionService.enqueueJob(id, identity);
             return ResponseEntity.status(result.status()).body(result.body());
         } catch (JobIntakeUnavailableException e) {
             return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE)
                     .body(new StringNode(e.getMessage()));
         } catch (JobNotFoundException e) {
             return ResponseEntity.status(HttpStatus.NOT_FOUND)
+                    .body(new StringNode(e.getMessage()));
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST)
                     .body(new StringNode(e.getMessage()));
         }
     }

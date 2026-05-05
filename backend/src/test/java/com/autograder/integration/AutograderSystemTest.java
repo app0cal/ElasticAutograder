@@ -35,18 +35,17 @@ class AutograderSystemTest {
     }
 
     /**
-     * Verifies that an incorrect Fibonacci submission receives only partial credit.
-     * Expected behavior: the runtime returns PARTIAL when some base cases pass but recursive cases fail.
+     * Verifies that an incorrect Fibonacci submission fails all test cases.
+     * Expected behavior: the runtime returns FAILED when no test cases pass.
      */
     @Test
-    void fullAutograderPipeline_partialCredit_returnsPartial() throws Exception {
+    void fullAutograderPipeline_allCasesWrong_returnsFailed() throws Exception {
         JsonNode output = runGrader("fibfail1.py", "fib");
 
-        assertEquals("PARTIAL", output.get("status").asText());
-        assertTrue(output.get("tests_passed").asInt() > 0);
+        assertEquals("FAILED", output.get("status").asText());
+        assertEquals(0, output.get("tests_passed").asInt());
         assertTrue(output.get("tests_total").asInt() > 0);
-        assertTrue(output.get("tests_passed").asInt() < output.get("tests_total").asInt());
-        assertTrue(output.get("error_message").isNull());
+        assertEquals("No test cases passed.", output.get("error_message").asText());
     }
 
     /**

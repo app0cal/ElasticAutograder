@@ -1,7 +1,6 @@
 import { Link, useNavigate } from "react-router-dom";
 import { useEffect, useRef, useState } from "react";
 import { uploadFile } from "../api/upload_file";
-import { runJob } from "../api/run_job";
 import { fetchGraders } from "../api/jobs";
 
 export default function SubmitJobPage() {
@@ -90,17 +89,11 @@ export default function SubmitJobPage() {
 
       setStatus(
         jobs.length === 1
-          ? "Submission uploaded. Starting grader..."
-          : `Batch uploaded. Starting ${jobs.length} graders...`
+          ? "Submission queued."
+          : `Batch queued with ${jobs.length} jobs.`
       );
 
       navigate("/jobs");
-
-      await Promise.all(
-        jobs.map(async (job) => {
-          await runJob(job.id, job.fileName);
-        })
-      );
     } catch (err) {
       setStatus(err.message || "Failed to submit job.");
     } finally {

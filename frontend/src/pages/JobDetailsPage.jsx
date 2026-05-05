@@ -203,7 +203,7 @@ export default function JobDetailsPage() {
             <h2 className="job-details-section-title">Metadata</h2>
             <div className="job-details-list">
               <DetailRow label="Grader Image" value={formatValue(job.graderImage)} />
-              <DetailRow label="Submission Path" value={formatValue(job.submissionPath)} />
+              <DetailRow label="Submitted File" value={formatValue(job.originalFilename)} />
               <DetailRow label="Kubernetes Job" value={formatValue(job.k8sJobName)} />
             </div>
           </section>

@@ -34,6 +34,9 @@ public class Job {
     @Column(name = "submission_path")
     private String submissionPath;
 
+    @Column(name = "submission_id")
+    private Long submissionId;
+
     @Column(name = "grader_image")
     private String graderImage;
 
@@ -115,6 +118,14 @@ public class Job {
 
     public void setSubmissionPath(String submissionPath) {
         this.submissionPath = submissionPath;
+    }
+
+    public Long getSubmissionId() {
+        return submissionId;
+    }
+
+    public void setSubmissionId(Long submissionId) {
+        this.submissionId = submissionId;
     }
 
     public String getGraderImage() {

@@ -41,6 +41,7 @@ class JobTest {
         job.setOriginalFilename("submission.py");
         job.setGraderType("fib");
         job.setSubmissionPath("batch/submission.py");
+        job.setSubmissionId(42L);
         job.setGraderImage("ea-grader-fibbonaci:v1");
         job.setStatus(JobStatus.SUCCEEDED);
         job.setFailureReason(FailureReason.NONE);
@@ -57,6 +58,7 @@ class JobTest {
         assertEquals("submission.py", job.getOriginalFilename());
         assertEquals("fib", job.getGraderType());
         assertEquals("batch/submission.py", job.getSubmissionPath());
+        assertEquals(42L, job.getSubmissionId());
         assertEquals("ea-grader-fibbonaci:v1", job.getGraderImage());
         assertEquals(JobStatus.SUCCEEDED, job.getStatus());
         assertEquals(FailureReason.NONE, job.getFailureReason());

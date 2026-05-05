@@ -33,66 +33,80 @@ public class JobExecutionService {
     private final SubmissionStorageService submissionStorageService;
     private final JobDispatcher jobDispatcher;
     private final JobResultMapper jobResultMapper;
+    private final JobQueueService jobQueueService;
 
     public JobExecutionService(
             JobRepository jobRepository,
             LocalGraderSetupStatus graderSetupStatus,
             SubmissionStorageService submissionStorageService,
             JobDispatcher jobDispatcher,
-            JobResultMapper jobResultMapper
+            JobResultMapper jobResultMapper,
+            JobQueueService jobQueueService
     ) {
         this.jobRepository = jobRepository;
         this.graderSetupStatus = graderSetupStatus;
         this.submissionStorageService = submissionStorageService;
         this.jobDispatcher = jobDispatcher;
         this.jobResultMapper = jobResultMapper;
+        this.jobQueueService = jobQueueService;
     }
 
     /**
-     * Runs an existing queued job and persists the resulting lifecycle state.
+     * Validates and schedules an existing queued job for background execution.
      *
-     * @param id job id to run
-     * @param rawSubmissionBody legacy request body containing a submission name
+     * @param id job id to enqueue
      * @param identity mock caller identity reserved for later authorization
-     * @return API-compatible JSON result and status
+     * @return accepted response for the compatibility run endpoint
      */
-    public RunJobResult runJob(Long id, String rawSubmissionBody, RequestIdentity identity) {
+    public JobEnqueueResponse enqueueJob(Long id, RequestIdentity identity) {
         if (!graderSetupStatus.isAcceptingJobs()) {
             throw new JobIntakeUnavailableException(graderSetupStatus.getMessage());
         }
 
+        Job job = getJobOrThrow(id, "Unable to find job object for id " + id);
+        if (job.getStatus() != JobStatus.QUEUED) {
+            throw new IllegalArgumentException("Job " + id + " is not queued.");
+        }
+
+        jobQueueService.enqueue(job, identity);
+        return new JobEnqueueResponse(HttpStatus.ACCEPTED, new StringNode("Job " + id + " queued."));
+    }
+
+    /**
+     * Executes a queued job in the background and persists its final state.
+     *
+     * @param id queued job id to execute
+     */
+    public void executeQueuedJob(Long id) {
         Optional<Job> jobEntity = jobRepository.findById(id);
         if (jobEntity.isEmpty()) {
-            throw new JobNotFoundException("Unable to find job object for id " + id);
+            return;
         }
 
         Job job = jobEntity.get();
-        String stagedSubmissionKey = null;
+        if (job.getStatus() != JobStatus.QUEUED) {
+            return;
+        }
+
+        String submissionKey;
 
         try {
-            stagedSubmissionKey = submissionStorageService.resolveSubmissionKey(job.getSubmissionPath(), rawSubmissionBody);
+            submissionKey = submissionStorageService.resolveSubmissionKey(job.getSubmissionPath(), null);
 
             markRunning(job);
-            JsonNode result = jobDispatcher.dispatch(id, stagedSubmissionKey, job.getGraderType());
+            var result = jobDispatcher.dispatch(id, submissionKey, job.getGraderType());
 
             jobResultMapper.applyJobResults(job, result);
             job.setFinishedAt(OffsetDateTime.now());
             job.setUpdatedAt(OffsetDateTime.now());
             job.setK8sJobName("grading-job-" + id);
             jobRepository.saveAndFlush(job);
-
-            return new RunJobResult(HttpStatus.OK, result);
         } catch (IllegalArgumentException e) {
             persistFailure(job, FailureReason.CONFIG_ERROR, e.getMessage());
-            return new RunJobResult(HttpStatus.BAD_REQUEST, new StringNode(e.getMessage()));
         } catch (GradingFailureException e) {
             persistFailure(job, e.getFailureReason(), e.getMessage());
-            return new RunJobResult(HttpStatus.INTERNAL_SERVER_ERROR, new StringNode(e.getMessage()));
         } catch (Exception e) {
             persistFailure(job, FailureReason.UNKNOWN, e.getMessage());
-            return new RunJobResult(HttpStatus.INTERNAL_SERVER_ERROR, new StringNode(e.getMessage()));
-        } finally {
-            cleanupStagedSubmission(job, stagedSubmissionKey);
         }
     }
 
@@ -114,6 +128,15 @@ public class JobExecutionService {
         jobRepository.saveAndFlush(job);
     }
 
+    private Job getJobOrThrow(Long id, String message) {
+        Optional<Job> jobEntity = jobRepository.findById(id);
+        if (jobEntity.isEmpty()) {
+            throw new JobNotFoundException(message);
+        }
+
+        return jobEntity.get();
+    }
+
     private void markRunning(Job job) {
         job.setStatus(JobStatus.RUNNING);
         job.setStartedAt(OffsetDateTime.now());
@@ -132,16 +155,4 @@ public class JobExecutionService {
         jobRepository.saveAndFlush(job);
     }
 
-    private void cleanupStagedSubmission(Job job, String stagedSubmissionKey) {
-        if (stagedSubmissionKey == null) {
-            return;
-        }
-
-        try {
-            job.setSubmissionPath(stagedSubmissionKey);
-            submissionStorageService.deleteIfExists(stagedSubmissionKey);
-        } catch (Exception e) {
-            System.err.println("Failed to delete staged upload file '" + stagedSubmissionKey + "': " + e.getMessage());
-        }
-    }
 }

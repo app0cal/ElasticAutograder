@@ -25,11 +25,17 @@ public class JobQueryService {
         this.jobRepository = jobRepository;
     }
 
-    public List<Job> getRecentJobs() {
-        return jobRepository.findAllOrderByCreatedAtDesc();
+    public List<JobResponse> getRecentJobs() {
+        return jobRepository.findAllOrderByCreatedAtDesc().stream()
+                .map(JobResponse::fromJob)
+                .toList();
     }
 
-    public Job getJobById(Long id) {
+    public JobResponse getJobById(Long id) {
+        return JobResponse.fromJob(getJobEntityById(id));
+    }
+
+    private Job getJobEntityById(Long id) {
         Optional<Job> jobEntity = jobRepository.findById(id);
         if (jobEntity.isEmpty()) {
             throw new JobNotFoundException("Unable to find job with id: " + id);
@@ -46,7 +52,7 @@ public class JobQueryService {
      * @return prepared JSON response body and attachment flag
      */
     public DownloadedJobResult downloadResults(Long id, boolean fromTable) throws IOException {
-        Job job = getJobById(id);
+        Job job = getJobEntityById(id);
         if (job.getResultJson() == null) {
             throw new JobResultUnavailableException("Unable to get results for id: " + id);
         }
