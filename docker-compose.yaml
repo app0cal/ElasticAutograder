@@ -10,12 +10,72 @@ services:
       - "5432:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d elastic_autograder"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
 
   redis:
     image: redis:7
     container_name: ea-redis
     ports:
       - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+
+  backend-api:
+    build:
+      context: ./backend
+    container_name: ea-backend-api
+    network_mode: host
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://127.0.0.1:5432/elastic_autograder
+      SPRING_DATASOURCE_USERNAME: postgres
+      SPRING_DATASOURCE_PASSWORD: postgres
+      SPRING_DATA_REDIS_HOST: 127.0.0.1
+      SPRING_DATA_REDIS_PORT: 6379
+      GRADING_QUEUE_ENABLED: "true"
+      GRADING_WORKER_ENABLED: "false"
+      GRADERS_SETUP_ON_STARTUP: "false"
+      KUBECONFIG: /root/.kube/config
+    volumes:
+      - ${HOME}/.kube:/root/.kube:ro
+      - ./config:/config:ro
+
+  backend-worker:
+    build:
+      context: ./backend
+    network_mode: host
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      SPRING_MAIN_WEB_APPLICATION_TYPE: none
+      SPRING_DATASOURCE_URL: jdbc:postgresql://127.0.0.1:5432/elastic_autograder
+      SPRING_DATASOURCE_USERNAME: postgres
+      SPRING_DATASOURCE_PASSWORD: postgres
+      SPRING_DATA_REDIS_HOST: 127.0.0.1
+      SPRING_DATA_REDIS_PORT: 6379
+      GRADING_QUEUE_ENABLED: "true"
+      GRADING_WORKER_ENABLED: "true"
+      GRADING_WORKER_CONCURRENCY: 4
+      GRADING_WORKER_ID_PREFIX: compose-worker
+      GRADERS_SETUP_ON_STARTUP: "false"
+      KUBECONFIG: /root/.kube/config
+    volumes:
+      - ${HOME}/.kube:/root/.kube:ro
+      - ./config:/config:ro
 
 volumes:
   pgdata:

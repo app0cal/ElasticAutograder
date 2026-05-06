@@ -5,6 +5,7 @@ package com.autograder.service.job;
  */
 public record GradingJobMessage(
         Long jobId,
+        String queueMessageId,
         String submissionKey,
         String graderType,
         String institutionId,

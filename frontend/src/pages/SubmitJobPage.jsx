@@ -84,7 +84,7 @@ export default function SubmitJobPage() {
 
     try {
       setIsSubmitting(true);
-      setStatus("Uploading submission...");
+      setStatus("Uploading for background grading...");
 
       const uploadResponse = await uploadFile(file, selectedGrader);
       const jobs = Array.isArray(uploadResponse.jobs) ? uploadResponse.jobs : [];
@@ -95,11 +95,17 @@ export default function SubmitJobPage() {
 
       setStatus(
         jobs.length === 1
-          ? "Submission queued."
+          ? "Queued for background grading."
           : `Batch queued with ${jobs.length} jobs.`
       );
 
-      navigate("/jobs");
+      navigate("/jobs", {
+        state: {
+          queuedJobs: jobs,
+          queuedAt: new Date().toISOString(),
+          graderType: selectedGrader
+        }
+      });
     } catch (err) {
       setStatus(err.message || "Failed to submit job.");
     } finally {

@@ -243,7 +243,16 @@ Failed transient work can be retried safely, duplicate workers cannot process th
 
 ### Completion Notes
 
-Not finished yet.
+- Added durable job attempt fields: `queued_at`, `attempt_count`, `max_attempts`, `last_attempt_at`, `queue_message_id`, and `worker_id`.
+- Added `DEAD_LETTERED` as the terminal state for retryable infrastructure failures that exhaust `max_attempts`.
+- Added an atomic `claimQueuedJob` repository update so only one worker can move a `QUEUED` job to `RUNNING`.
+- Redis remains the queue transport, while Postgres remains the source of truth for claim, attempt, and worker ownership state.
+- Workers now pass a stable worker id into execution, and successful or terminal jobs clear `worker_id`.
+- Retry policy is intentionally narrow: `KUBERNETES_ERROR` and `UNKNOWN` can retry; `TIMEOUT`, `RESOURCE_LIMIT`, `INVALID_UPLOAD`, `WRONG_ANSWER`, `CONFIG_ERROR`, and `RESULT_PARSE_ERROR` are final failures.
+- This keeps intentional timeout and memory-limit assignment fixtures from being retried during burst grading.
+- Backend job responses and the job details UI now expose attempt and worker metadata.
+- Added `init/add_job_attempt_tracking.sql` and updated `init/create_job.sql`.
+- Backend tests passed.
 
 ## Goal 6: Add Mock Institution And User Ownership
 
@@ -280,7 +289,7 @@ Jobs and submissions store institution/user ownership, and job list/detail queri
 
 ## Goal 7: Prepare Kubernetes And kind For Multi-Worker Grading
 
-Status: Not Started
+Status: Finished
 
 ### Problem
 
@@ -312,12 +321,12 @@ The backend can run many grader jobs safely in kind and later in a production-li
 - Expanded `k8s/kind-config.yaml` to one control-plane and two worker nodes for local burst tests.
 - Added `k8s/grading-namespace-rbac.yaml` for the `elastic-grading` namespace and grader resource permissions.
 - Updated stale Kubernetes reference manifests and `k8s/readme.md`.
-- Backend tests passed.
-- Capacity pressure currently fails fast with a Kubernetes error. Goal 5/9 should later requeue, retry, or surface queue-health state instead of treating capacity as a final failure.
+- Backend tests cover Kubernetes property defaults and generated ConfigMap/Job metadata.
+- Capacity pressure currently fails fast with a Kubernetes error from the max-active guard. Goal 5 now retries retryable infrastructure failures, and Goal 9 should surface queue/cluster health so operators can see capacity pressure directly.
 
 ## Goal 8: Update Frontend Submission Flow For Queued Jobs
 
-Status: Partially Finished
+Status: Finished
 
 ### Problem
 
@@ -338,16 +347,18 @@ Submitting a file or zip upload clearly communicates queued background work, nav
 
 ### Completion Notes
 
-Partially finished in Goal 2.
-
-Solution notes so far:
-- `SubmitJobPage.jsx` no longer calls `runJob` with `Promise.all`.
-- Upload queues jobs on the backend and navigates to the jobs board.
-- Remaining work is UI clarity, mock identity controls, and queue health visibility.
+- `SubmitJobPage.jsx` uploads once and does not call `runJob` with `Promise.all`.
+- Upload success navigates to the jobs board with a short-lived queued-job handoff summary.
+- Jobs board shows a dismissible queued batch banner with job count and submitted filenames after upload.
+- Jobs board and job details continue polling only for active `QUEUED` and `RUNNING` jobs.
+- Result download remains disabled until `resultJson` exists.
+- Mock identity controls are visible in submit and jobs views, and API helpers send mock institution/user headers.
+- Job details shows attempt, worker, queue message, institution, and submitted-by metadata.
+- Queue depth, Redis health, worker heartbeat, and stuck-job visibility remain Goal 9.
 
 ## Goal 9: Add Queue And System Health Visibility
 
-Status: Not Started
+Status: Finished
 
 ### Problem
 
@@ -368,11 +379,19 @@ Developers can quickly tell whether jobs are queued, running, blocked, retrying,
 
 ### Completion Notes
 
-Not finished yet.
+Finished after adding a lightweight read-only health endpoint and jobs-board panel.
+
+Solution notes:
+- Added `GET /api/system/queue-health` for Redis connectivity, Redis queue depth, queue name, worker enablement/concurrency, Kubernetes namespace/max-active settings, job counts, stale running jobs, and recent dead-lettered jobs.
+- Added `QueueHealthService` and structured DTOs so Redis failures return `redisConnected=false` with an error while Postgres job health still returns.
+- Added repository support for grouped job status counts, recent `DEAD_LETTERED` jobs, and stale `RUNNING` jobs based on configurable `grading.health.stale-running-threshold` with a 5-minute default.
+- Added a compact System Health panel to the jobs board that polls on the same cadence as the job list and remains read-only.
+- This is basic operational visibility for local/debug workflows, not production monitoring. It intentionally does not add Prometheus, Grafana, Micrometer dashboards, requeue controls, purge controls, or retry actions.
+- Burst/load testing remains Goal 10.
 
 ## Goal 10: Add Burst And Failure Testing Scenarios
 
-Status: Not Started
+Status: Finished
 
 ### Problem
 
@@ -393,4 +412,12 @@ There are repeatable tests or scripts that prove the queue and Kubernetes worker
 
 ### Completion Notes
 
-Not finished yet.
+Finished after adding a repeatable local burst/failure script, focused queue-worker tests, and a short runbook.
+
+Solution notes:
+- Added `scripts/burst-test.py` for local API-driven burst and failure scenarios without resetting Postgres, purging Redis, or deleting Kubernetes resources.
+- The script supports success bursts, queue pressure, mixed outcomes, timeout-oriented performance failures, memory-limit failures, custom fixtures, mock identity headers, configurable count/concurrency, and timeout controls.
+- The default burst size is `50` jobs, which exceeds the default worker concurrency of `4` and Kubernetes max-active setting of `8`.
+- Added `documentation/burst-testing.md` with prerequisites, scenario commands, expected output, and failure behavior.
+- Expanded backend unit tests around worker draining, malformed message isolation, duplicate worker claim protection, retryable unknown failures, requeue, and dead-letter behavior.
+- This remains a local reproducibility tool and is intentionally not a Docker/kind-dependent CI gate.

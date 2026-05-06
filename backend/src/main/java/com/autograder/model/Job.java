@@ -23,6 +23,8 @@ import com.autograder.service.identity.RequestIdentity;
 @Table(name = "jobs")
 public class Job {
 
+    public static final int DEFAULT_MAX_ATTEMPTS = 3;
+
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
@@ -71,6 +73,24 @@ public class Job {
     @Column(name = "finished_at")
     private OffsetDateTime finishedAt;
 
+    @Column(name = "queued_at")
+    private OffsetDateTime queuedAt;
+
+    @Column(name = "attempt_count", nullable = false)
+    private Integer attemptCount;
+
+    @Column(name = "max_attempts", nullable = false)
+    private Integer maxAttempts;
+
+    @Column(name = "last_attempt_at")
+    private OffsetDateTime lastAttemptAt;
+
+    @Column(name = "queue_message_id")
+    private String queueMessageId;
+
+    @Column(name = "worker_id")
+    private String workerId;
+
     @Column(name = "score")
     private BigDecimal score;
 
@@ -100,6 +120,9 @@ public class Job {
         this.failureMessage = null;
         this.institutionId = RequestIdentity.DEFAULT_INSTITUTION;
         this.submittedBy = RequestIdentity.DEFAULT_USER;
+        this.queuedAt = status == JobStatus.QUEUED ? createdAt : null;
+        this.attemptCount = 0;
+        this.maxAttempts = DEFAULT_MAX_ATTEMPTS;
     }
 
     public Long getId() {
@@ -212,6 +235,54 @@ public class Job {
 
     public void setFinishedAt(OffsetDateTime finishedAt) {
         this.finishedAt = finishedAt;
+    }
+
+    public OffsetDateTime getQueuedAt() {
+        return queuedAt;
+    }
+
+    public void setQueuedAt(OffsetDateTime queuedAt) {
+        this.queuedAt = queuedAt;
+    }
+
+    public Integer getAttemptCount() {
+        return attemptCount;
+    }
+
+    public void setAttemptCount(Integer attemptCount) {
+        this.attemptCount = attemptCount;
+    }
+
+    public Integer getMaxAttempts() {
+        return maxAttempts;
+    }
+
+    public void setMaxAttempts(Integer maxAttempts) {
+        this.maxAttempts = maxAttempts;
+    }
+
+    public OffsetDateTime getLastAttemptAt() {
+        return lastAttemptAt;
+    }
+
+    public void setLastAttemptAt(OffsetDateTime lastAttemptAt) {
+        this.lastAttemptAt = lastAttemptAt;
+    }
+
+    public String getQueueMessageId() {
+        return queueMessageId;
+    }
+
+    public void setQueueMessageId(String queueMessageId) {
+        this.queueMessageId = queueMessageId;
+    }
+
+    public String getWorkerId() {
+        return workerId;
+    }
+
+    public void setWorkerId(String workerId) {
+        this.workerId = workerId;
     }
 
     public BigDecimal getScore() {

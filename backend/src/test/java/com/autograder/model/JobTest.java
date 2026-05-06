@@ -27,6 +27,9 @@ class JobTest {
         assertEquals(JobStatus.QUEUED, job.getStatus());
         assertEquals(FailureReason.NONE, job.getFailureReason());
         assertNull(job.getFailureMessage());
+        assertEquals(createdAt, job.getQueuedAt());
+        assertEquals(0, job.getAttemptCount());
+        assertEquals(Job.DEFAULT_MAX_ATTEMPTS, job.getMaxAttempts());
     }
 
     /**
@@ -49,6 +52,12 @@ class JobTest {
         job.setUpdatedAt(now);
         job.setStartedAt(now.minusSeconds(2));
         job.setFinishedAt(now);
+        job.setQueuedAt(now.minusSeconds(4));
+        job.setAttemptCount(2);
+        job.setMaxAttempts(3);
+        job.setLastAttemptAt(now.minusSeconds(1));
+        job.setQueueMessageId("queue-message-1");
+        job.setWorkerId("worker-1");
         job.setScore(new BigDecimal("100.0"));
         job.setTestsPassed(2);
         job.setTestsTotal(2);
@@ -66,6 +75,12 @@ class JobTest {
         assertEquals(now, job.getUpdatedAt());
         assertEquals(now.minusSeconds(2), job.getStartedAt());
         assertEquals(now, job.getFinishedAt());
+        assertEquals(now.minusSeconds(4), job.getQueuedAt());
+        assertEquals(2, job.getAttemptCount());
+        assertEquals(3, job.getMaxAttempts());
+        assertEquals(now.minusSeconds(1), job.getLastAttemptAt());
+        assertEquals("queue-message-1", job.getQueueMessageId());
+        assertEquals("worker-1", job.getWorkerId());
         assertEquals(new BigDecimal("100.0"), job.getScore());
         assertEquals(2, job.getTestsPassed());
         assertEquals(2, job.getTestsTotal());

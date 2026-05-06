@@ -13,6 +13,7 @@ public class WorkerProperties {
     private boolean enabled = true;
     private int concurrency = 4;
     private Duration pollTimeout = Duration.ofSeconds(5);
+    private String idPrefix = "worker";
 
     public boolean isEnabled() {
         return enabled;
@@ -36,5 +37,13 @@ public class WorkerProperties {
 
     public void setPollTimeout(Duration pollTimeout) {
         this.pollTimeout = pollTimeout;
+    }
+
+    public String getIdPrefix() {
+        return idPrefix;
+    }
+
+    public void setIdPrefix(String idPrefix) {
+        this.idPrefix = idPrefix;
     }
 }

@@ -3,7 +3,9 @@ package com.autograder.service.job;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -50,6 +52,7 @@ class GradingJobWorkerTest {
     void pollOnce_messageAvailable_executesJob() throws Exception {
         String payload = objectMapper.writeValueAsString(new GradingJobMessage(
                 77L,
+                "queue-message-1",
                 "db:2ee63863-c9ec-4a1f-8ce9-d4db05cc7a5c",
                 "fib",
                 "local",
@@ -60,7 +63,42 @@ class GradingJobWorkerTest {
 
         assertTrue(worker.pollOnce());
 
-        verify(jobExecutionService).executeQueuedJob(77L);
+        verify(jobExecutionService).executeQueuedJob(Mockito.eq(77L), anyString());
+    }
+
+    @Test
+    void shouldStart_apiModeWorkerDisabled_returnsFalse() {
+        WorkerProperties apiWorkerProperties = new WorkerProperties();
+        apiWorkerProperties.setEnabled(false);
+        GradingJobWorker apiWorker = new GradingJobWorker(
+                redisTemplate,
+                objectMapper,
+                new QueueProperties(),
+                apiWorkerProperties,
+                taskExecutor,
+                jobExecutionService
+        );
+
+        assertFalse(apiWorker.shouldStart());
+        apiWorker.start();
+        assertFalse(apiWorker.isRunning());
+    }
+
+    @Test
+    void shouldStart_workerModeEnabled_returnsTrueAndUsesConfiguredPrefix() {
+        WorkerProperties workerModeProperties = new WorkerProperties();
+        workerModeProperties.setIdPrefix("compose-worker");
+        GradingJobWorker workerModeWorker = new GradingJobWorker(
+                redisTemplate,
+                objectMapper,
+                new QueueProperties(),
+                workerModeProperties,
+                taskExecutor,
+                jobExecutionService
+        );
+
+        assertTrue(workerModeWorker.shouldStart());
+        assertTrue(workerModeWorker.getWorkerId().startsWith("compose-worker-"));
     }
 
     @Test
@@ -74,6 +112,59 @@ class GradingJobWorkerTest {
     void submitPayload_malformedPayload_skipsMessage() {
         worker.submitPayload("{not-json");
 
-        verify(jobExecutionService, never()).executeQueuedJob(any());
+        verify(jobExecutionService, never()).executeQueuedJob(any(), anyString());
+    }
+
+    @Test
+    void pollOnce_multipleMessages_dispatchesEachValidJob() throws Exception {
+        String firstPayload = objectMapper.writeValueAsString(message(101L));
+        String secondPayload = objectMapper.writeValueAsString(message(102L));
+        when(listOperations.rightPop(any(), any())).thenReturn(firstPayload, secondPayload, null);
+
+        assertTrue(worker.pollOnce());
+        assertTrue(worker.pollOnce());
+        assertFalse(worker.pollOnce());
+
+        verify(jobExecutionService).executeQueuedJob(Mockito.eq(101L), anyString());
+        verify(jobExecutionService).executeQueuedJob(Mockito.eq(102L), anyString());
+        verify(jobExecutionService, times(2)).executeQueuedJob(any(), anyString());
+    }
+
+    @Test
+    void submitPayload_malformedThenValidPayload_continuesDispatching() throws Exception {
+        worker.submitPayload("{not-json");
+        worker.submitPayload(objectMapper.writeValueAsString(message(103L)));
+
+        verify(jobExecutionService).executeQueuedJob(Mockito.eq(103L), anyString());
+        verify(jobExecutionService, times(1)).executeQueuedJob(any(), anyString());
+    }
+
+    @Test
+    void submitPayload_missingJobId_skipsMessage() throws Exception {
+        String payload = objectMapper.writeValueAsString(new GradingJobMessage(
+                null,
+                "queue-message-1",
+                "db:2ee63863-c9ec-4a1f-8ce9-d4db05cc7a5c",
+                "fib",
+                "local",
+                "anonymous",
+                1
+        ));
+
+        worker.submitPayload(payload);
+
+        verify(jobExecutionService, never()).executeQueuedJob(any(), anyString());
+    }
+
+    private GradingJobMessage message(Long jobId) {
+        return new GradingJobMessage(
+                jobId,
+                "queue-message-" + jobId,
+                "db:2ee63863-c9ec-4a1f-8ce9-d4db05cc7a5c",
+                "fib",
+                "local",
+                "anonymous",
+                1
+        );
     }
 }

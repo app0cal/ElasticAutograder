@@ -107,6 +107,7 @@ export default function JobDetailsPage() {
   const results = parseResults(job?.resultJson);
   const isActive = ACTIVE_STATUSES.has(job?.status);
   const canDownload = Boolean(job?.resultJson);
+  const emptyResultMessage = getEmptyResultMessage(job);
 
   async function handleDownloadResults() {
     setDownloadError("");
@@ -213,6 +214,8 @@ export default function JobDetailsPage() {
               <DetailRow label="Institution" value={formatValue(job.institutionId)} />
               <DetailRow label="Submitted By" value={formatValue(job.submittedBy)} />
               <DetailRow label="Kubernetes Job" value={formatValue(job.k8sJobName)} />
+              <DetailRow label="Worker" value={formatValue(job.workerId)} />
+              <DetailRow label="Queue Message" value={formatValue(job.queueMessageId)} />
             </div>
           </section>
 
@@ -223,6 +226,9 @@ export default function JobDetailsPage() {
               <DetailRow label="Updated At" value={formatDate(job.updatedAt)} />
               <DetailRow label="Started At" value={formatDate(job.startedAt)} />
               <DetailRow label="Finished At" value={formatDate(job.finishedAt)} />
+              <DetailRow label="Queued At" value={formatDate(job.queuedAt)} />
+              <DetailRow label="Last Attempt At" value={formatDate(job.lastAttemptAt)} />
+              <DetailRow label="Attempts" value={formatAttempts(job.attemptCount, job.maxAttempts)} />
               <DetailRow label="Run Time" value={formatDuration(job.startedAt, job.finishedAt)} />
             </div>
           </section>
@@ -243,7 +249,7 @@ export default function JobDetailsPage() {
         <section className="card job-details-card job-results-card">
           <h2 className="job-details-section-title">Results</h2>
           {results.length === 0 ? (
-            <p className="muted">No saved result entries are available for this job yet.</p>
+            <p className="muted">{emptyResultMessage}</p>
           ) : (
             <div className="job-results-table-wrapper">
               <table className="job-results-table">
@@ -321,6 +327,26 @@ function parseResults(resultJson) {
   return [];
 }
 
+function getEmptyResultMessage(job) {
+  if (!job) {
+    return "No saved result entries are available for this job yet.";
+  }
+
+  if (ACTIVE_STATUSES.has(job.status)) {
+    return "Results will appear after background grading finishes.";
+  }
+
+  if (job.status === "FAILED") {
+    return "This job finished without saved test results. Check failure details for the recorded reason.";
+  }
+
+  if (job.status === "DEAD_LETTERED") {
+    return "This job exhausted retry attempts before producing saved results.";
+  }
+
+  return "No saved result entries are available for this job.";
+}
+
 function formatDate(date) {
   if (!date) {
     return "Not available";
@@ -338,6 +364,14 @@ function formatDate(date) {
 
 function formatTests(passed, total) {
   return passed != null && total != null ? `${passed} / ${total}` : "Not available";
+}
+
+function formatAttempts(attemptCount, maxAttempts) {
+  if (attemptCount == null && maxAttempts == null) {
+    return "Not available";
+  }
+
+  return `${attemptCount ?? 0} / ${maxAttempts ?? "unknown"}`;
 }
 
 function formatScore(score) {

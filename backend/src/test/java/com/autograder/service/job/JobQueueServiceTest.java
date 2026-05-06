@@ -48,6 +48,8 @@ class JobQueueServiceTest {
         job.setGraderType("fib");
         job.setInstitutionId("university");
         job.setSubmittedBy("student");
+        job.setQueueMessageId("queue-message-1");
+        job.setAttemptCount(1);
 
         service.enqueue(job, new RequestIdentity("university", "student"));
 
@@ -55,11 +57,12 @@ class JobQueueServiceTest {
         verify(listOperations).leftPush(eq("grading-jobs"), payload.capture());
         GradingJobMessage message = objectMapper.readValue(payload.getValue(), GradingJobMessage.class);
         assertEquals(42L, message.jobId());
+        assertEquals("queue-message-1", message.queueMessageId());
         assertEquals("db:2ee63863-c9ec-4a1f-8ce9-d4db05cc7a5c", message.submissionKey());
         assertEquals("fib", message.graderType());
         assertEquals("university", message.institutionId());
         assertEquals("student", message.requestedBy());
-        assertEquals(1, message.attempt());
+        assertEquals(2, message.attempt());
     }
 
     @Test

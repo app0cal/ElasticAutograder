@@ -4,7 +4,9 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -100,7 +102,9 @@ class JobExecutionServiceTest {
     void executeQueuedJob_success_persistsResultAndRetainsSubmission() throws Exception {
         Job job = job(11L);
         job.setSubmissionPath("db:2ee63863-c9ec-4a1f-8ce9-d4db05cc7a5c");
+        job.setAttemptCount(1);
         when(jobRepository.findById(11L)).thenReturn(Optional.of(job));
+        when(jobRepository.claimQueuedJob(11L, "worker-a")).thenReturn(1);
         when(submissionStorageService.resolveSubmissionKey("db:2ee63863-c9ec-4a1f-8ce9-d4db05cc7a5c", null))
                 .thenReturn("db:2ee63863-c9ec-4a1f-8ce9-d4db05cc7a5c");
 
@@ -111,12 +115,47 @@ class JobExecutionServiceTest {
         result.putArray("results").addObject().put("name", "case_1").put("passed", true);
         when(jobDispatcher.dispatch(11L, "db:2ee63863-c9ec-4a1f-8ce9-d4db05cc7a5c", "fib", "local")).thenReturn(result);
 
-        service.executeQueuedJob(11L);
+        service.executeQueuedJob(11L, "worker-a");
 
         assertEquals(JobStatus.SUCCEEDED, job.getStatus());
         assertEquals(2, job.getTestsPassed());
         assertEquals("grading-job-11", job.getK8sJobName());
+        assertEquals(null, job.getWorkerId());
         verify(submissionStorageService, never()).deleteIfExists(any());
+    }
+
+    @Test
+    void executeQueuedJob_duplicateClaim_skipsExecution() throws Exception {
+        when(jobRepository.claimQueuedJob(11L, "worker-a")).thenReturn(0);
+
+        service.executeQueuedJob(11L, "worker-a");
+
+        verify(jobDispatcher, never()).dispatch(any(), any(), any(), any());
+    }
+
+    @Test
+    void executeQueuedJob_duplicateWorkers_onlyClaimedWorkerExecutes() throws Exception {
+        Job job = job(21L);
+        job.setSubmissionPath("submission.py");
+        job.setAttemptCount(1);
+        when(jobRepository.claimQueuedJob(21L, "worker-a")).thenReturn(1);
+        when(jobRepository.claimQueuedJob(21L, "worker-b")).thenReturn(0);
+        when(jobRepository.findById(21L)).thenReturn(Optional.of(job));
+        when(submissionStorageService.resolveSubmissionKey("submission.py", null))
+                .thenReturn("submission.py");
+
+        ObjectNode result = objectMapper.createObjectNode();
+        result.put("status", "SUCCEEDED");
+        result.put("tests_passed", 1);
+        result.put("tests_total", 1);
+        result.putArray("results").addObject().put("name", "case_1").put("passed", true);
+        when(jobDispatcher.dispatch(21L, "submission.py", "fib", "local")).thenReturn(result);
+
+        service.executeQueuedJob(21L, "worker-a");
+        service.executeQueuedJob(21L, "worker-b");
+
+        assertEquals(JobStatus.SUCCEEDED, job.getStatus());
+        verify(jobDispatcher, times(1)).dispatch(21L, "submission.py", "fib", "local");
     }
 
     @Test
@@ -135,32 +174,120 @@ class JobExecutionServiceTest {
     void executeQueuedJob_invalidSubmissionPath_persistsConfigError() throws Exception {
         Job job = job(16L);
         job.setSubmissionPath("../secret.py");
+        job.setAttemptCount(1);
         when(jobRepository.findById(16L)).thenReturn(Optional.of(job));
+        when(jobRepository.claimQueuedJob(16L, "worker-a")).thenReturn(1);
         when(submissionStorageService.resolveSubmissionKey("../secret.py", null))
                 .thenThrow(new IllegalArgumentException("Invalid file name."));
 
-        service.executeQueuedJob(16L);
+        service.executeQueuedJob(16L, "worker-a");
 
         assertEquals(JobStatus.FAILED, job.getStatus());
         assertEquals(FailureReason.CONFIG_ERROR, job.getFailureReason());
         assertEquals("Invalid file name.", job.getFailureMessage());
+        assertEquals(null, job.getWorkerId());
     }
 
     @Test
-    void executeQueuedJob_gradingFailure_persistsStructuredFailure() throws Exception {
+    void executeQueuedJob_timeoutFailure_persistsFinalFailure() throws Exception {
         Job job = job(13L);
         job.setSubmissionPath("submission.py");
+        job.setAttemptCount(1);
         when(jobRepository.findById(13L)).thenReturn(Optional.of(job));
+        when(jobRepository.claimQueuedJob(13L, "worker-a")).thenReturn(1);
         when(submissionStorageService.resolveSubmissionKey("submission.py", null))
                 .thenReturn("submission.py");
         when(jobDispatcher.dispatch(13L, "submission.py", "fib", "local"))
                 .thenThrow(new GradingFailureException(FailureReason.TIMEOUT, "Timed out"));
 
-        service.executeQueuedJob(13L);
+        service.executeQueuedJob(13L, "worker-a");
 
         assertEquals(JobStatus.FAILED, job.getStatus());
         assertEquals(FailureReason.TIMEOUT, job.getFailureReason());
         assertEquals("Timed out", job.getFailureMessage());
+        verify(jobQueueService, never()).enqueue(any(), any());
+    }
+
+    @Test
+    void executeQueuedJob_resourceLimitFailure_persistsFinalFailure() throws Exception {
+        Job job = job(15L);
+        job.setSubmissionPath("submission.py");
+        job.setAttemptCount(1);
+        when(jobRepository.findById(15L)).thenReturn(Optional.of(job));
+        when(jobRepository.claimQueuedJob(15L, "worker-a")).thenReturn(1);
+        when(submissionStorageService.resolveSubmissionKey("submission.py", null))
+                .thenReturn("submission.py");
+        when(jobDispatcher.dispatch(15L, "submission.py", "fib", "local"))
+                .thenThrow(new GradingFailureException(FailureReason.RESOURCE_LIMIT, "OOMKilled"));
+
+        service.executeQueuedJob(15L, "worker-a");
+
+        assertEquals(JobStatus.FAILED, job.getStatus());
+        assertEquals(FailureReason.RESOURCE_LIMIT, job.getFailureReason());
+        verify(jobQueueService, never()).enqueue(any(), any());
+    }
+
+    @Test
+    void executeQueuedJob_kubernetesFailureUnderMaxAttempts_requeues() throws Exception {
+        Job job = job(19L);
+        job.setSubmissionPath("submission.py");
+        job.setAttemptCount(1);
+        job.setMaxAttempts(3);
+        when(jobRepository.findById(19L)).thenReturn(Optional.of(job));
+        when(jobRepository.claimQueuedJob(19L, "worker-a")).thenReturn(1);
+        when(submissionStorageService.resolveSubmissionKey("submission.py", null))
+                .thenReturn("submission.py");
+        when(jobDispatcher.dispatch(19L, "submission.py", "fib", "local"))
+                .thenThrow(new GradingFailureException(FailureReason.KUBERNETES_ERROR, "Cluster unavailable"));
+
+        service.executeQueuedJob(19L, "worker-a");
+
+        assertEquals(JobStatus.QUEUED, job.getStatus());
+        assertEquals(FailureReason.KUBERNETES_ERROR, job.getFailureReason());
+        assertEquals(null, job.getWorkerId());
+        verify(jobQueueService).enqueue(eq(job), eq(RequestIdentity.localAnonymous()));
+    }
+
+    @Test
+    void executeQueuedJob_kubernetesFailureAtMaxAttempts_deadLetters() throws Exception {
+        Job job = job(20L);
+        job.setSubmissionPath("submission.py");
+        job.setAttemptCount(3);
+        job.setMaxAttempts(3);
+        when(jobRepository.findById(20L)).thenReturn(Optional.of(job));
+        when(jobRepository.claimQueuedJob(20L, "worker-a")).thenReturn(1);
+        when(submissionStorageService.resolveSubmissionKey("submission.py", null))
+                .thenReturn("submission.py");
+        when(jobDispatcher.dispatch(20L, "submission.py", "fib", "local"))
+                .thenThrow(new GradingFailureException(FailureReason.KUBERNETES_ERROR, "Cluster unavailable"));
+
+        service.executeQueuedJob(20L, "worker-a");
+
+        assertEquals(JobStatus.DEAD_LETTERED, job.getStatus());
+        assertEquals(FailureReason.KUBERNETES_ERROR, job.getFailureReason());
+        assertEquals(null, job.getWorkerId());
+        verify(jobQueueService, never()).enqueue(any(), any());
+    }
+
+    @Test
+    void executeQueuedJob_unknownFailureUnderMaxAttempts_requeues() throws Exception {
+        Job job = job(22L);
+        job.setSubmissionPath("submission.py");
+        job.setAttemptCount(1);
+        job.setMaxAttempts(3);
+        when(jobRepository.findById(22L)).thenReturn(Optional.of(job));
+        when(jobRepository.claimQueuedJob(22L, "worker-a")).thenReturn(1);
+        when(submissionStorageService.resolveSubmissionKey("submission.py", null))
+                .thenReturn("submission.py");
+        when(jobDispatcher.dispatch(22L, "submission.py", "fib", "local"))
+                .thenThrow(new RuntimeException("Unexpected worker failure"));
+
+        service.executeQueuedJob(22L, "worker-a");
+
+        assertEquals(JobStatus.QUEUED, job.getStatus());
+        assertEquals(FailureReason.UNKNOWN, job.getFailureReason());
+        assertEquals(null, job.getWorkerId());
+        verify(jobQueueService).enqueue(eq(job), eq(RequestIdentity.localAnonymous()));
     }
 
     @Test

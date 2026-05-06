@@ -29,6 +29,10 @@ class JobQueryServiceTest {
         job.setSubmissionId(4L);
         job.setInstitutionId("university-a");
         job.setSubmittedBy("student-1");
+        job.setAttemptCount(2);
+        job.setMaxAttempts(3);
+        job.setQueueMessageId("queue-message-1");
+        job.setWorkerId("worker-1");
         when(jobRepository.findAllByInstitutionIdOrderByCreatedAtDesc("university-a")).thenReturn(List.of(job));
 
         List<JobResponse> response = service.getRecentJobs(new RequestIdentity("university-a", "student-1"));
@@ -37,6 +41,10 @@ class JobQueryServiceTest {
         assertEquals("submission.py", response.get(0).originalFilename());
         assertEquals("university-a", response.get(0).institutionId());
         assertEquals("student-1", response.get(0).submittedBy());
+        assertEquals(2, response.get(0).attemptCount());
+        assertEquals(3, response.get(0).maxAttempts());
+        assertEquals("queue-message-1", response.get(0).queueMessageId());
+        assertEquals("worker-1", response.get(0).workerId());
     }
 
     @Test

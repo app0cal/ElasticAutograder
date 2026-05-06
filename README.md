@@ -248,6 +248,10 @@ Backend API: http://localhost:8080
 
 If the frontend URL is different, check the Vite terminal output.
 
+#### Distributed worker demo
+
+To run one API process and multiple independent backend worker containers, use the Docker Compose runbook in `documentation/distributed-workers.md`.
+
 #### Upload files from mockSubmission folder
 Use the sample submissions in `mocksubmission/`.
 

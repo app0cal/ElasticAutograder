@@ -5,6 +5,7 @@ import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 
 import com.autograder.config.KubernetesGradingProperties;
+import com.autograder.config.QueueHealthProperties;
 import com.autograder.config.QueueProperties;
 import com.autograder.config.WorkerProperties;
 
@@ -12,7 +13,12 @@ import com.autograder.config.WorkerProperties;
  * Runs the main application
  */
 @SpringBootApplication
-@EnableConfigurationProperties({QueueProperties.class, WorkerProperties.class, KubernetesGradingProperties.class})
+@EnableConfigurationProperties({
+        QueueProperties.class,
+        WorkerProperties.class,
+        KubernetesGradingProperties.class,
+        QueueHealthProperties.class
+})
 public class Autograder {
 
     public static void main(String[] args) {

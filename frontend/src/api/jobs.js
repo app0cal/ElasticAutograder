@@ -37,3 +37,15 @@ export async function fetchJobById(jobId) {
 
   return res.json();
 }
+
+export async function fetchQueueHealth() {
+  const res = await fetch(`${API_BASE}/system/queue-health`, {
+    headers: getMockIdentityHeaders()
+  });
+
+  if (!res.ok) {
+    throw new Error(`Failed to fetch queue health: ${res.status}`);
+  }
+
+  return res.json();
+}

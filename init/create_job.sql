@@ -27,7 +27,7 @@ CREATE TABLE jobs (
   submitted_by TEXT NOT NULL DEFAULT 'anonymous',
 
   status TEXT NOT NULL CHECK (
-    status IN ('PENDING', 'QUEUED', 'RUNNING', 'SUCCEEDED', 'PARTIAL', 'FAILED', 'CANCELLED')
+    status IN ('PENDING', 'QUEUED', 'RUNNING', 'SUCCEEDED', 'PARTIAL', 'FAILED', 'DEAD_LETTERED', 'CANCELLED')
   ),
 
   failure_reason TEXT CHECK (
@@ -50,6 +50,12 @@ CREATE TABLE jobs (
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   started_at TIMESTAMPTZ,
   finished_at TIMESTAMPTZ,
+  queued_at TIMESTAMPTZ,
+  attempt_count INT NOT NULL DEFAULT 0,
+  max_attempts INT NOT NULL DEFAULT 3,
+  last_attempt_at TIMESTAMPTZ,
+  queue_message_id TEXT,
+  worker_id TEXT,
 
   score NUMERIC,
   tests_passed INT,
@@ -72,6 +78,12 @@ CREATE INDEX idx_jobs_grader_type
 
 CREATE INDEX idx_jobs_created_at
   ON jobs(created_at DESC);
+
+CREATE INDEX idx_jobs_queued_at
+  ON jobs(queued_at);
+
+CREATE INDEX idx_jobs_worker_id
+  ON jobs(worker_id);
 
 CREATE INDEX idx_jobs_submission_id
   ON jobs(submission_id);

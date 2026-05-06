@@ -49,11 +49,12 @@ public class JobQueueService {
 
         GradingJobMessage message = new GradingJobMessage(
                 job.getId(),
+                job.getQueueMessageId(),
                 job.getSubmissionPath(),
                 job.getGraderType(),
                 job.getInstitutionId(),
                 job.getSubmittedBy(),
-                1
+                nextAttempt(job)
         );
 
         try {
@@ -67,5 +68,10 @@ public class JobQueueService {
         } catch (JsonProcessingException e) {
             throw new JobIntakeUnavailableException("Unable to serialize grading queue message.");
         }
+    }
+
+    private int nextAttempt(Job job) {
+        Integer attemptCount = job.getAttemptCount();
+        return attemptCount == null ? 1 : attemptCount + 1;
     }
 }

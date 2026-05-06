@@ -1,6 +1,7 @@
 package com.autograder.service.job;
 
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.UUID;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import jakarta.annotation.PreDestroy;
@@ -31,6 +32,7 @@ public class GradingJobWorker {
     private final TaskExecutor gradingTaskExecutor;
     private final JobExecutionService jobExecutionService;
     private final AtomicBoolean running = new AtomicBoolean(false);
+    private final String workerId;
     private Thread pollingThread;
 
     public GradingJobWorker(
@@ -47,6 +49,7 @@ public class GradingJobWorker {
         this.workerProperties = workerProperties;
         this.gradingTaskExecutor = gradingTaskExecutor;
         this.jobExecutionService = jobExecutionService;
+        this.workerId = buildWorkerId(workerProperties);
     }
 
     /**
@@ -54,18 +57,30 @@ public class GradingJobWorker {
      */
     @EventListener(ApplicationReadyEvent.class)
     public void start() {
-        if (!queueProperties.isEnabled() || !workerProperties.isEnabled() || !running.compareAndSet(false, true)) {
+        if (!shouldStart() || !running.compareAndSet(false, true)) {
             return;
         }
 
         pollingThread = new Thread(this::pollLoop, "grading-redis-poller");
-        pollingThread.setDaemon(true);
         pollingThread.start();
         logger.info(
-                "Started Redis grading worker queue={} concurrency={}",
+                "Started Redis grading worker queue={} concurrency={} workerId={}",
                 queueProperties.getName(),
-                workerProperties.getConcurrency()
+                workerProperties.getConcurrency(),
+                workerId
         );
+    }
+
+    boolean shouldStart() {
+        return queueProperties.isEnabled() && workerProperties.isEnabled();
+    }
+
+    boolean isRunning() {
+        return running.get();
+    }
+
+    String getWorkerId() {
+        return workerId;
     }
 
     @PreDestroy
@@ -96,12 +111,13 @@ public class GradingJobWorker {
             }
 
             logger.info(
-                    "Worker consumed grading job jobId={} institutionId={} attempt={}",
+                    "Worker consumed grading job jobId={} institutionId={} attempt={} workerId={}",
                     message.jobId(),
                     message.institutionId(),
-                    message.attempt()
+                    message.attempt(),
+                    workerId
             );
-            gradingTaskExecutor.execute(() -> jobExecutionService.executeQueuedJob(message.jobId()));
+            gradingTaskExecutor.execute(() -> jobExecutionService.executeQueuedJob(message.jobId(), workerId));
         } catch (Exception e) {
             logger.warn("Skipping malformed grading queue message: {}", e.getMessage());
         }
@@ -124,5 +140,13 @@ public class GradingJobWorker {
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
         }
+    }
+
+    private String buildWorkerId(WorkerProperties properties) {
+        String prefix = properties.getIdPrefix();
+        if (prefix == null || prefix.isBlank()) {
+            prefix = "worker";
+        }
+        return prefix + "-" + UUID.randomUUID();
     }
 }

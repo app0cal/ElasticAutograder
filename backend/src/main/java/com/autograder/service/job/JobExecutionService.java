@@ -2,6 +2,7 @@ package com.autograder.service.job;
 
 import java.time.OffsetDateTime;
 import java.util.Optional;
+import java.util.UUID;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -75,6 +76,7 @@ public class JobExecutionService {
             throw new IllegalArgumentException("Job " + id + " is not queued.");
         }
 
+        prepareQueuedJob(job);
         jobQueueService.enqueue(job, identity);
         return new JobEnqueueResponse(HttpStatus.ACCEPTED, new StringNode("Job " + id + " queued."));
     }
@@ -85,43 +87,55 @@ public class JobExecutionService {
      * @param id queued job id to execute
      */
     public void executeQueuedJob(Long id) {
+        executeQueuedJob(id, "worker-local");
+    }
+
+    /**
+     * Executes a queued job for a specific worker after an atomic claim.
+     *
+     * @param id queued job id to execute
+     * @param workerId worker process/thread identifier claiming the job
+     */
+    public void executeQueuedJob(Long id, String workerId) {
+        int claimed = jobRepository.claimQueuedJob(id, workerId);
+        if (claimed == 0) {
+            logger.info("Skipping unclaimed job jobId={} workerId={}", id, workerId);
+            return;
+        }
+
         Optional<Job> jobEntity = jobRepository.findById(id);
         if (jobEntity.isEmpty()) {
             return;
         }
 
         Job job = jobEntity.get();
-        if (job.getStatus() != JobStatus.QUEUED) {
-            logger.info("Skipping non-queued job jobId={} status={}", id, job.getStatus());
-            return;
-        }
-
         String submissionKey;
 
         try {
             submissionKey = submissionStorageService.resolveSubmissionKey(job.getSubmissionPath(), null);
 
-            markRunning(job);
             logger.info(
-                    "Started grading job jobId={} institutionId={} graderType={}",
+                    "Started grading job jobId={} institutionId={} graderType={} workerId={}",
                     id,
                     job.getInstitutionId(),
-                    job.getGraderType()
+                    job.getGraderType(),
+                    workerId
             );
             var result = jobDispatcher.dispatch(id, submissionKey, job.getGraderType(), job.getInstitutionId());
 
             jobResultMapper.applyJobResults(job, result);
             job.setFinishedAt(OffsetDateTime.now());
             job.setUpdatedAt(OffsetDateTime.now());
+            job.setWorkerId(null);
             job.setK8sJobName("grading-job-" + id);
             jobRepository.saveAndFlush(job);
             logger.info("Finished grading job jobId={} status={}", id, job.getStatus());
         } catch (IllegalArgumentException e) {
-            persistFailure(job, FailureReason.CONFIG_ERROR, e.getMessage());
+            handleExecutionFailure(job, FailureReason.CONFIG_ERROR, e.getMessage());
         } catch (GradingFailureException e) {
-            persistFailure(job, e.getFailureReason(), e.getMessage());
+            handleExecutionFailure(job, e.getFailureReason(), e.getMessage());
         } catch (Exception e) {
-            persistFailure(job, FailureReason.UNKNOWN, e.getMessage());
+            handleExecutionFailure(job, FailureReason.UNKNOWN, e.getMessage());
         }
     }
 
@@ -152,25 +166,75 @@ public class JobExecutionService {
         return jobEntity.get();
     }
 
-    private void markRunning(Job job) {
-        job.setStatus(JobStatus.RUNNING);
-        job.setStartedAt(OffsetDateTime.now());
+    private void prepareQueuedJob(Job job) {
+        job.setQueuedAt(OffsetDateTime.now());
+        job.setQueueMessageId(UUID.randomUUID().toString());
         job.setUpdatedAt(OffsetDateTime.now());
-        job.setFailureReason(FailureReason.NONE);
-        job.setFailureMessage(null);
         jobRepository.saveAndFlush(job);
     }
 
-    private void persistFailure(Job job, FailureReason failureReason, String message) {
-        job.setStatus(JobStatus.FAILED);
+    private void handleExecutionFailure(Job job, FailureReason failureReason, String message) {
+        if (shouldRetry(job, failureReason)) {
+            requeueAfterFailure(job, failureReason, message);
+            return;
+        }
+
+        persistFinalFailure(job, failureReason, message, terminalFailureStatus(failureReason, job));
+    }
+
+    private boolean shouldRetry(Job job, FailureReason failureReason) {
+        return isRetryableFailure(failureReason) && currentAttempt(job) < maxAttempts(job);
+    }
+
+    private boolean isRetryableFailure(FailureReason failureReason) {
+        return failureReason == FailureReason.KUBERNETES_ERROR || failureReason == FailureReason.UNKNOWN;
+    }
+
+    private void requeueAfterFailure(Job job, FailureReason failureReason, String message) {
+        job.setStatus(JobStatus.QUEUED);
+        job.setFailureReason(failureReason);
+        job.setFailureMessage(message);
+        job.setWorkerId(null);
+        job.setFinishedAt(null);
+        prepareQueuedJob(job);
+        jobQueueService.enqueue(job, new RequestIdentity(job.getInstitutionId(), job.getSubmittedBy()));
+        logger.warn(
+                "Requeued grading job jobId={} attempt={} maxAttempts={} failureReason={}",
+                job.getId(),
+                currentAttempt(job),
+                maxAttempts(job),
+                failureReason
+        );
+    }
+
+    private JobStatus terminalFailureStatus(FailureReason failureReason, Job job) {
+        if (isRetryableFailure(failureReason) && currentAttempt(job) >= maxAttempts(job)) {
+            return JobStatus.DEAD_LETTERED;
+        }
+
+        return JobStatus.FAILED;
+    }
+
+    private int currentAttempt(Job job) {
+        return job.getAttemptCount() == null ? 0 : job.getAttemptCount();
+    }
+
+    private int maxAttempts(Job job) {
+        return job.getMaxAttempts() == null ? Job.DEFAULT_MAX_ATTEMPTS : job.getMaxAttempts();
+    }
+
+    private void persistFinalFailure(Job job, FailureReason failureReason, String message, JobStatus status) {
+        job.setStatus(status);
+        job.setWorkerId(null);
         job.setFailureReason(failureReason);
         job.setFailureMessage(message);
         job.setFinishedAt(OffsetDateTime.now());
         job.setUpdatedAt(OffsetDateTime.now());
         jobRepository.saveAndFlush(job);
         logger.error(
-                "Failed grading job jobId={} failureReason={} message={}",
+                "Failed grading job jobId={} status={} failureReason={} message={}",
                 job.getId(),
+                status,
                 failureReason,
                 message
         );

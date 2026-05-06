@@ -108,6 +108,7 @@ export default function JobsTable({ jobs, graders, gridRef, onViewDetails }) {
       "job-row-succeeded": (params) => params.data?.status === "SUCCEEDED",
       "job-row-partial": (params) => params.data?.status === "PARTIAL",
       "job-row-failed": (params) => params.data?.status === "FAILED",
+      "job-row-dead-lettered": (params) => params.data?.status === "DEAD_LETTERED",
       "job-row-cancelled": (params) => params.data?.status === "CANCELLED"
     }),
     []
