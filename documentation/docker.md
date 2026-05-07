@@ -1,13 +1,16 @@
-## Docker Compose Local Setup (PostgreSQL + Redis)
+## Docker Compose Local Setup
 
-We will use `docker-compose.yml` to create the containers for our local workflow.
+We use `docker-compose.yaml` to create containers for the local workflow.
 
 Reminder(this part is more for the readme after when we're done and for future users):
 - **PostgreSQL** (database for jobs/results metadata)
 - **Redis** (queue for job messages)
+- Optional backend API and worker containers through the `app` profile
+- Optional full app stack, including the frontend, through the `full` profile
 
-> **Important:** `docker-compose.yml` is only for local infra services right now.  
-> It does **NOT** create/manage the Kubernetes cluster (`kind`) and it does **not** run grading pods at all.
+> **Important:** plain `docker compose up -d` starts only local infrastructure. It does **not** create/manage the Kubernetes cluster (`kind`) and it does **not** run grading pods.
+>
+> Do not run the Compose backend and Gradle backend at the same time; both bind the backend API to port 8080.
 
 ---
 
@@ -25,9 +28,25 @@ A lot of the following might seem redundant below but I highly encourage you guy
 
 ## Common use cases (read this after reading the tutorial below please)
 A lot of the commands are the exact same as the ones below but please at least understand why to use each one before you copy paste bc some commands wipe out db which I cant stress enough.
-### Start Services again
+### Start infrastructure again
 ```bash
 docker compose up -d
+```
+
+### Start backend API and workers
+```bash
+docker compose --profile app up -d --build
+```
+
+### Start the full Compose app stack
+```bash
+docker compose --profile full up -d --build
+```
+
+If port 5173 is already in use:
+
+```bash
+FRONTEND_PORT=5174 docker compose --profile full up -d --build
 ```
 
 ### Check status
@@ -58,11 +77,27 @@ docker compose up -d
 ```
 
 ## 1) Start local services (create if needed)
-Run this from the project root (where `docker-compose.yml` is located):
+Run this from the project root (where `docker-compose.yaml` is located):
 
 ```bash
 docker compose up -d
 ```
+
+This starts Postgres and Redis only. Use Gradle `bootRun` for local backend development.
+
+To start the backend API and one worker in Compose instead:
+
+```bash
+docker compose --profile app up -d --build
+```
+
+To start Postgres, Redis, backend API, one worker, and the frontend container:
+
+```bash
+docker compose --profile full up -d --build
+```
+
+The frontend container serves the built React app and proxies `/api` to the backend. If port 5173 is occupied by the Vite dev server, use `FRONTEND_PORT=5174`.
 
 ## 2) Check it's running 
 ```bash

@@ -1,4 +1,4 @@
-const API_BASE = "http://localhost:8080/api";
+import { API_BASE } from "./config";
 
 export async function removeFile(fileName) {
   const response = await fetch(`${API_BASE}/files/remove`, {

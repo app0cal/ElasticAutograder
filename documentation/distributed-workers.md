@@ -25,14 +25,16 @@ docker compose up -d postgres redis
 docker exec -i ea-postgres psql -U postgres -d elastic_autograder < init/create_job.sql
 ```
 
-The Compose backend services mount `${HOME}/.kube` and use host networking so the containers can reach the same local kind API server that `kubectl` uses. They also mount `./config` at `/config` because the backend loads `graders.json` from `/app/../config/graders.json` inside the container. This matches the default kind kubeconfig on Linux. On Docker Desktop, enable host networking or run the backend locally with the same properties if your Docker version cannot expose the host kind API server to containers.
+Plain `docker compose up -d` starts only infrastructure. Backend API and worker containers are behind the `app` profile so they do not conflict with the Gradle backend used for local development. The `full` profile also starts the frontend container for release-style local runs.
+
+The Compose backend services mount `${HOME}/.kube` and use host networking so the containers can reach the same local kind API server that `kubectl` uses. They also mount `./config` at `/config` and set `GRADERS_CONFIG_PATH=/config/graders.json` so the backend reads the same grader catalog as local jar runs. This matches the default kind kubeconfig on Linux. On Docker Desktop, enable host networking or run the backend locally with the same properties if your Docker version cannot expose the host kind API server to containers.
 
 ## Start One API And Three Workers
 
 Build and start the API plus worker replicas:
 
 ```bash
-docker compose up --build --scale backend-worker=3 backend-api backend-worker
+docker compose --profile app up -d --build --scale backend-worker=3
 ```
 
 The API process runs with:

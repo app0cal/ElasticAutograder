@@ -21,6 +21,36 @@ class GraderConfigLoaderTest {
     }
 
     /**
+     * Verifies that the no-arg load path can be configured for jar releases.
+     * Expected behavior: loadGraders() reads from the constructor-provided config path.
+     */
+    @Test
+    void loadGraders_configuredDefaultPath_returnsGraders() throws Exception {
+        Path configFile = tempDir.resolve("release-config").resolve("graders.json");
+        Files.createDirectories(configFile.getParent());
+        Files.writeString(configFile, """
+                {
+                  "graders": [
+                    {
+                      "key": "fib",
+                      "label": "Fibonacci",
+                      "imageName": "ea-grader-fib:v1",
+                      "manifestPath": "/app/grader/manifest.json",
+                      "summary": "Return the nth Fibonacci number."
+                    }
+                  ]
+                }
+                """);
+
+        GraderConfigLoader loader = new GraderConfigLoader(new ObjectMapper(), configFile.toString());
+
+        List<GraderDefinition> graders = loader.loadGraders();
+
+        assertEquals(1, graders.size());
+        assertEquals("fib", graders.get(0).getKey());
+    }
+
+    /**
      * Verifies that a complete grader config file loads every grader definition.
      * Expected behavior: all configured metadata and resource values are preserved.
      */

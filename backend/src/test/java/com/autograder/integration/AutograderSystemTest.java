@@ -140,7 +140,7 @@ class AutograderSystemTest {
     }
 
     private JsonNode runGrader(File submission, String problem) throws Exception {
-        File runtimeDir = new File("grading/image-build/runtime");
+        File runtimeDir = new File("../graders/runtime");
         assertTrue(runtimeDir.exists(), "Runtime directory does not exist: " + runtimeDir.getPath());
 
         assertTrue(
@@ -148,7 +148,7 @@ class AutograderSystemTest {
                 "Submission file does not exist for grader '" + problem + "': " + submission.getPath()
         );
 
-        File manifest = new File("grading/image-build/" + problem + "/manifest.json");
+        File manifest = new File("../graders/" + problem + "/manifest.json");
         assertTrue(manifest.exists(), "Manifest file does not exist: " + manifest.getPath());
 
         ProcessBuilder pb = new ProcessBuilder(

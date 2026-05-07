@@ -276,7 +276,7 @@ Developers can reliably set up, test, debug, and demonstrate the distributed wor
 
 Not finished yet. Partial progress: the submit page and upload API now use grader language metadata so Python, Java, and C++ graders advertise and enforce the correct single-file source extensions while keeping `.zip` batch uploads available.
 
-Recent QUEUED-job investigation confirmed an important local workflow distinction: `grading.worker.enabled=false` starts an API-only backend. In that mode uploads still create Postgres jobs and publish Redis messages, but jobs remain `QUEUED` until a worker-enabled backend process consumes the queue. Normal local testing should use `./gradlew bootRun --args='--spring.profiles.active=local'`; API-only mode should be paired with Docker Compose or another worker process.
+Recent QUEUED-job investigation confirmed an important local workflow distinction: `grading.worker.enabled=false` starts an API-only backend. In that mode uploads still create Postgres jobs and publish Redis messages, but jobs remain `QUEUED` until a worker-enabled backend process consumes the queue. Normal local testing should use `./gradlew bootRun --args='--spring.profiles.active=local'`; API-only mode should be paired with the Docker Compose `app` profile or another worker process.
 
 ## Future Goal 7: Improve Student Feedback And Result Presentation
 

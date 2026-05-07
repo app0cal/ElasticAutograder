@@ -1,6 +1,5 @@
 import { getMockIdentityHeaders } from "./mock_identity";
-
-const API_BASE = "http://localhost:8080/api";
+import { API_BASE } from "./config";
 
 export async function downloadResults(jobId) {
   const response = await fetch(`${API_BASE}/jobs/result/${jobId}`, {

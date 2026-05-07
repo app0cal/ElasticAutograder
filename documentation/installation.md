@@ -18,14 +18,17 @@ scripts\setup-k8s.bat
 
 If on linux/unix based operating systems run the following
 ```bash
-#!/usr/bin/env bash
-set -euo pipefail
-python3 scripts/setup_graders.py
+python3 scripts/setup-graders.py
 ```
 If you run into any issues refer to the documentation folder/setup-help.md for manually deleting.
 
 
-#### Run Docker Compose to start the local PostgreSQL database.
+#### Run Docker Compose to start local infrastructure.
+
+By default, Compose starts only PostgreSQL and Redis. Start the backend separately with Gradle for local development, use the Compose `app` profile for containerized API/workers, or use the `full` profile for the full browser app stack. Do not run multiple backend modes at the same time because they bind port 8080.
+
+If the Vite dev server is already using port 5173, run the full profile with `FRONTEND_PORT=5174`.
+
 ```bash
 docker compose up -d
 docker exec -i ea-postgres psql -U postgres -d elastic_autograder < init/create_job.sql

@@ -29,7 +29,7 @@ Elastic Autograder is useful for building and demonstrating systems such as cour
 
 ## Quick Start
 
-Start local infrastructure:
+Start local infrastructure. By default, Compose starts only Postgres and Redis; the backend runs separately for fast local development.
 
 ```bash
 docker compose up -d
@@ -52,6 +52,16 @@ npm install
 npm run dev
 ```
 
+Use `docker compose --profile app up -d --build` when you only want the backend API and worker containers without the frontend container.
+
+
+To fully run the entire backend and frontend in one, run this command from the root directory
+```bash
+docker compose --profile full up -d --build
+```
+
+
+
 Frontend: http://localhost:5173  
 Backend API: http://localhost:8080
 
@@ -60,9 +70,10 @@ Backend API: http://localhost:8080
 - [Dependencies](documentation/dependencies.md)
 - [Installation](documentation/installation.md)
 - [Getting Started](documentation/start.md)
+    - [Grader Workspace](graders/README.md)
 - [Mock Testing](documentation/testing.md)
-- [Distributed Worker Demo](documentation/distributed-workers.md)
-- [Burst And Failure Testing](documentation/burst-testing.md)
+    - [Distributed Worker Demo](documentation/distributed-workers.md)
+    - [Burst And Failure Testing](documentation/burst-testing.md)
 - [Current Goals](documentation/goals.md)
 - [Future Goals](documentation/futuregoals.md)
 

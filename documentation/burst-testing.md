@@ -15,6 +15,8 @@ cd backend
 ./gradlew bootRun --args='--spring.profiles.active=local'
 ```
 
+`docker compose up -d` starts only Postgres and Redis by default. Do not run the Compose backend and Gradle backend at the same time; both bind the backend API to port 8080. For distributed worker bursts, use the Compose app profile described in `documentation/distributed-workers.md`. For release-style browser testing, use `docker compose --profile full up -d --build`.
+
 Use the `dev` profile instead of `local` if you want backend startup to run grader setup automatically.
 
 ## Scenarios

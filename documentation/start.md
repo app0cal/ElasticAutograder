@@ -1,3 +1,26 @@
+### Local development startup
+
+Start infrastructure from the project root first:
+
+```bash
+docker compose up -d
+```
+
+By default, Compose starts only Postgres and Redis. The backend commands below start the API on port 8080 for local development.
+
+Do not run the Compose backend and Gradle backend at the same time; both bind the backend API to port 8080.
+
+For a full containerized local stack, build grader images first and then start the `full` profile:
+
+```bash
+python scripts/setup-graders.py
+docker compose --profile full up -d --build
+```
+
+The frontend container proxies `/api` to the backend container. If port 5173 is already in use, set `FRONTEND_PORT=5174` when starting the full profile.
+
+Use this full profile for release-style local runs. Use the terminal split below when actively editing backend or frontend code.
+
 ### The next steps require at least two open terminals.
 
 **Terminal 1 — Frontend**
@@ -40,4 +63,3 @@ Frontend: http://localhost:5173
 Backend API: http://localhost:8080
 
 If the frontend URL is different, check the Vite terminal output.
-

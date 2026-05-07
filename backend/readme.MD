@@ -6,7 +6,7 @@ This document gives new developers a practical map of the Spring Boot backend. T
 
 - Expose REST API endpoints under `/api`.
 - Store job metadata and grading results in PostgreSQL.
-- Load available graders from `../config/graders.json`.
+- Load available graders from the configured `graders.config-path`, which is `../config/graders.json` for local backend development.
 - Stage uploaded submissions temporarily under `grading/uploads`.
 - Create Kubernetes ConfigMaps and Jobs for grading.
 - Parse grader output and save status, score, test counts, and failure details.
@@ -48,7 +48,7 @@ Automated tests. Unit tests cover controller, repository, configuration, and ser
 
 `grading`
 
-Grader runtime files, grader manifests, and temporary uploaded submissions used while jobs are running.
+Temporary uploaded submissions used while jobs are running. Public grader manifests and runtime build files live in root `../graders`.
 
 ## Request Flow
 
@@ -100,12 +100,12 @@ backend/build/reports/jacoco/test/html/index.html
 ## Adding A New Grader
 
 1. Add a grader entry to `../config/graders.json`.
-2. Create a matching manifest folder under `grading/image-build/<grader-key>/`.
-3. Add a `manifest.json` using the format described in `grading/image-build/manifestGuide.md`.
+2. Create a matching manifest folder under `../graders/<grader-key>/`.
+3. Add a `manifest.json` using the format described in `../graders/manifestGuide.md`.
 4. Build/load grader images with:
 
 ```bash
-python3 ../scripts/setup-graders.py
+python3 ../scripts/setup-graders.py --grader <grader-key>
 ```
 
 5. Restart the backend so the new grader configuration is loaded.

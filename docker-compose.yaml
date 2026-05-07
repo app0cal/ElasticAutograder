@@ -28,6 +28,7 @@ services:
       retries: 12
 
   backend-api:
+    profiles: ["app", "full"]
     build:
       context: ./backend
     container_name: ea-backend-api
@@ -46,12 +47,14 @@ services:
       GRADING_QUEUE_ENABLED: "true"
       GRADING_WORKER_ENABLED: "false"
       GRADERS_SETUP_ON_STARTUP: "false"
+      GRADERS_CONFIG_PATH: /config/graders.json
       KUBECONFIG: /root/.kube/config
     volumes:
       - ${HOME}/.kube:/root/.kube:ro
       - ./config:/config:ro
 
   backend-worker:
+    profiles: ["app", "full"]
     build:
       context: ./backend
     network_mode: host
@@ -72,10 +75,25 @@ services:
       GRADING_WORKER_CONCURRENCY: 4
       GRADING_WORKER_ID_PREFIX: compose-worker
       GRADERS_SETUP_ON_STARTUP: "false"
+      GRADERS_CONFIG_PATH: /config/graders.json
       KUBECONFIG: /root/.kube/config
     volumes:
       - ${HOME}/.kube:/root/.kube:ro
       - ./config:/config:ro
+
+  frontend:
+    profiles: ["full"]
+    build:
+      context: ./frontend
+      args:
+        VITE_API_BASE_URL: ${VITE_API_BASE_URL:-/api}
+    container_name: ea-frontend
+    depends_on:
+      - backend-api
+    network_mode: host
+    environment:
+      FRONTEND_CONTAINER_PORT: ${FRONTEND_PORT:-5173}
+      BACKEND_API_ORIGIN: http://127.0.0.1:8080
 
 volumes:
   pgdata:

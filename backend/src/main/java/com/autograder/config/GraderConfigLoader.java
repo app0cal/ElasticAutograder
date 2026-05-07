@@ -7,6 +7,8 @@ import java.util.HashSet;
 import java.util.List;
 
 import org.springframework.stereotype.Component;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 
 import com.autograder.model.GraderDefinition;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -18,8 +20,8 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 @Component
 public class GraderConfigLoader {
 
-    // default path to the grader config file from the project directory
-    private static final Path DEFAULT_CONFIG_PATH = Path.of("..", "config", "graders.json");
+    // default path supports running a release jar from the repository/release root
+    private static final Path DEFAULT_CONFIG_PATH = Path.of("config", "graders.json");
 
     // platform defaults for graders unless overridden in config
     private static final int DEFAULT_TIMEOUT_SECONDS = 10; // 10 originally
@@ -30,14 +32,23 @@ public class GraderConfigLoader {
 
     // Jackson mapper to turn grader.json into java objects we can read
     private final ObjectMapper objectMapper;
+    private final Path configPath;
 
     /**
      * Constructs the config loader with the shared ObjectMapper bean.
      *
      * @param objectMapper mapper used to parse JSON config into GraderConfig
      */
-    public GraderConfigLoader(ObjectMapper objectMapper) {
+    @Autowired
+    public GraderConfigLoader(
+            ObjectMapper objectMapper,
+            @Value("${graders.config-path:config/graders.json}") String configPath) {
         this.objectMapper = objectMapper;
+        this.configPath = Path.of(configPath);
+    }
+
+    public GraderConfigLoader(ObjectMapper objectMapper) {
+        this(objectMapper, DEFAULT_CONFIG_PATH.toString());
     }
 
     /**
@@ -46,7 +57,7 @@ public class GraderConfigLoader {
      * @return fully processed grader definitions from graders.json
      */
     public List<GraderDefinition> loadGraders() {
-        return loadGraders(DEFAULT_CONFIG_PATH);
+        return loadGraders(configPath);
     }
 
     /**

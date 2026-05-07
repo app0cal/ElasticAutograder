@@ -1,0 +1,8 @@
+ARG BASE_IMAGE
+
+FROM ${BASE_IMAGE}
+
+ARG GRADER_NAME
+RUN test -n "$GRADER_NAME"
+
+COPY ${GRADER_NAME}/ /app/grader/
