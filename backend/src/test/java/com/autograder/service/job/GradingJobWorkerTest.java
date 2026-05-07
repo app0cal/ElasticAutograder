@@ -1,6 +1,7 @@
 package com.autograder.service.job;
 
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
@@ -14,6 +15,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.Mockito;
 import org.springframework.core.task.TaskExecutor;
+import org.springframework.core.task.TaskRejectedException;
 import org.springframework.data.redis.core.ListOperations;
 import org.springframework.data.redis.core.StringRedisTemplate;
 
@@ -106,6 +108,7 @@ class GradingJobWorkerTest {
         when(listOperations.rightPop(any(), any())).thenReturn(null);
 
         assertFalse(worker.pollOnce());
+        assertEquals(4, worker.availableExecutionPermits());
     }
 
     @Test
@@ -113,6 +116,8 @@ class GradingJobWorkerTest {
         worker.submitPayload("{not-json");
 
         verify(jobExecutionService, never()).executeQueuedJob(any(), anyString());
+        verify(listOperations, never()).leftPush(any(), anyString());
+        assertEquals(4, worker.availableExecutionPermits());
     }
 
     @Test
@@ -154,6 +159,53 @@ class GradingJobWorkerTest {
         worker.submitPayload(payload);
 
         verify(jobExecutionService, never()).executeQueuedJob(any(), anyString());
+        verify(listOperations, never()).leftPush(any(), anyString());
+        assertEquals(4, worker.availableExecutionPermits());
+    }
+
+    @Test
+    void submitPayload_executorRejectsTask_requeuesOriginalPayloadAndReleasesPermit() throws Exception {
+        TaskExecutor rejectingExecutor = command -> {
+            throw new TaskRejectedException("executor full");
+        };
+        GradingJobWorker rejectingWorker = new GradingJobWorker(
+                redisTemplate,
+                objectMapper,
+                new QueueProperties(),
+                new WorkerProperties(),
+                rejectingExecutor,
+                jobExecutionService
+        );
+        String payload = objectMapper.writeValueAsString(message(104L));
+
+        rejectingWorker.submitPayload(payload);
+
+        verify(listOperations).leftPush("grading-jobs", payload);
+        verify(jobExecutionService, never()).executeQueuedJob(any(), anyString());
+        assertEquals(4, rejectingWorker.availableExecutionPermits());
+    }
+
+    @Test
+    void pollOnce_executorRejectsPoppedMessage_requeuesOriginalPayloadAndReleasesPermit() throws Exception {
+        TaskExecutor rejectingExecutor = command -> {
+            throw new TaskRejectedException("executor full");
+        };
+        GradingJobWorker rejectingWorker = new GradingJobWorker(
+                redisTemplate,
+                objectMapper,
+                new QueueProperties(),
+                new WorkerProperties(),
+                rejectingExecutor,
+                jobExecutionService
+        );
+        String payload = objectMapper.writeValueAsString(message(105L));
+        when(listOperations.rightPop(any(), any())).thenReturn(payload);
+
+        assertTrue(rejectingWorker.pollOnce());
+
+        verify(listOperations).leftPush("grading-jobs", payload);
+        verify(jobExecutionService, never()).executeQueuedJob(any(), anyString());
+        assertEquals(4, rejectingWorker.availableExecutionPermits());
     }
 
     private GradingJobMessage message(Long jobId) {

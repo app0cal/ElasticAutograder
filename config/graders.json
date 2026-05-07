@@ -12,7 +12,8 @@
         "Fibonacci numbers are built by summing the previous two values in the sequence.",
         "Assume the sequence begins with 0 and 1 when reasoning about expected outputs, so F(0) = 0 and F(1) = 1.",
         "Your solution should return a single numeric result for the requested input n."
-      ]
+      ],
+      "timeoutSeconds": 20
     },
     {
       "institutionId": "local",
@@ -32,6 +33,46 @@
       "cpuLimitMilli": 500,
       "memoryRequestMb": 64,
       "memoryLimitMb": 128
+    },
+    {
+      "institutionId": "local",
+      "key": "fib-java",
+      "graderFolder": "fib-java",
+      "label": "Fibonacci Java",
+      "imageName": "ea-grader-fib-java:v1",
+      "language": "java",
+      "manifestPath": "/app/grader/manifest.json",
+      "summary": "Read n from stdin in a single Java file and print the nth Fibonacci number.",
+      "details": [
+        "Submit one Java source file that defines public class Main.",
+        "The program should read a single integer from standard input.",
+        "Print only the Fibonacci value followed by a newline."
+      ],
+      "timeoutSeconds": 30,
+      "cpuRequestMilli": 100,
+      "cpuLimitMilli": 500,
+      "memoryRequestMb": 128,
+      "memoryLimitMb": 512
+    },
+    {
+      "institutionId": "local",
+      "key": "fib-cpp",
+      "graderFolder": "fib-cpp",
+      "label": "Fibonacci C++",
+      "imageName": "ea-grader-fib-cpp:v1",
+      "language": "cpp",
+      "manifestPath": "/app/grader/manifest.json",
+      "summary": "Read n from stdin in a single C++ file and print the nth Fibonacci number.",
+      "details": [
+        "Submit one C++ source file with a main function.",
+        "The program should read a single integer from standard input.",
+        "Print only the Fibonacci value followed by a newline."
+      ],
+      "timeoutSeconds": 30,
+      "cpuRequestMilli": 100,
+      "cpuLimitMilli": 500,
+      "memoryRequestMb": 128,
+      "memoryLimitMb": 512
     },
     {
       "institutionId": "local",

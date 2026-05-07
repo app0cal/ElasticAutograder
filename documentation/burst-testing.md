@@ -43,6 +43,16 @@ Mixed outcomes:
 python scripts/burst-test.py mixed-burst --count 12
 ```
 
+Randomized mixed-language burst:
+
+```bash
+python scripts/burst-test.py mixed-language-burst --count 100 --seed 12345
+python scripts/burst-test.py mixed-language-burst --count 500 --seed 12345
+python scripts/burst-test.py mixed-language-burst --count 1000 --seed 12345 --timeout-seconds 1800
+```
+
+`mixed-language-burst` randomly selects Python, Java, C++, timeout, and memory-limit fixtures using a weighted workload. The seed makes the selection reproducible. If `--seed` is omitted, the script generates one and prints it in the summary.
+
 Failure scenarios:
 
 ```bash
@@ -56,12 +66,25 @@ Useful overrides:
 python scripts/burst-test.py success-burst --count 50 --concurrency 10 --timeout-seconds 300
 python scripts/burst-test.py success-burst --fixture mocksubmission/fib/fibpass1.py --grader fib
 python scripts/burst-test.py success-burst --institution local --user burst-tester
+python scripts/burst-test.py mixed-language-burst --selection-mode round-robin --count 28
 ```
 
 ## Output
 
-The script prints upload progress, queue depth, queued/running counts, terminal status totals, elapsed time, throughput, failure reasons, stale running job count, and global dead-letter count.
+The script prints upload progress, selection mode, random seed when applicable, selected fixture counts, queue depth, queued/running counts, terminal status totals, elapsed time, throughput, failure reasons, stale running job count, and global dead-letter count.
 
 When queue health includes running jobs, the script also prints the distinct worker IDs observed during polling. In the distributed Compose demo, seeing multiple `compose-worker-...` values proves that separate worker containers participated while the burst drained.
 
 It exits non-zero when uploads fail, submitted jobs do not reach terminal states before timeout, expected statuses/failure reasons do not match, stale running jobs are observed, or `queue-pressure` never observes Redis queue depth or durable queued backlog above worker capacity.
+
+If a run reports `queueDepth=0` while durable queued jobs remain, worker messages may have been dropped by an older worker build. After applying the worker backpressure fix and restarting workers, inspect the stranded messages with:
+
+```bash
+python scripts/requeue-stranded-jobs.py --dry-run
+```
+
+To requeue local stranded jobs in the Docker Compose Redis instance:
+
+```bash
+python scripts/requeue-stranded-jobs.py
+```

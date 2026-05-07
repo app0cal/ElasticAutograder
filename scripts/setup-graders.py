@@ -162,25 +162,42 @@ def build_grader_image(grader: dict[str, Any]) -> None:
     key = grader["key"]
     image_name = grader["imageName"]
     grader_folder = grader.get("graderFolder") or grader["key"]
+    runtime_packages = runtime_packages_for_language(grader.get("language"))
 
     log(f"Building grader image for '{key}'...")
+    build_cmd = [
+        "docker",
+        "build",
+        "--no-cache",
+        "-f",
+        str(DOCKERFILE_PATH),
+        "-t",
+        image_name,
+        "--build-arg",
+        f"GRADER_NAME={grader_folder}",
+    ]
+    if runtime_packages:
+        build_cmd.extend(["--build-arg", f"RUNTIME_PACKAGES={runtime_packages}"])
+    build_cmd.append(".")
+
     run_or_fail(
-        [
-            "docker",
-            "build",
-            "--no-cache",
-            "-f",
-            str(DOCKERFILE_PATH),
-            "-t",
-            image_name,
-            "--build-arg",
-            f"GRADER_NAME={grader_folder}",
-            ".",
-        ],
+        build_cmd,
         cwd=IMAGE_BUILD_ROOT,
         context=f"Failed to build image for grader '{key}'",
     )
     log(f"[OK] Built image: {image_name}")
+
+
+def runtime_packages_for_language(language: Any) -> str:
+    if not isinstance(language, str):
+        return ""
+
+    normalized = language.strip().lower()
+    if normalized == "java":
+        return "default-jdk-headless"
+    if normalized in {"cpp", "c++"}:
+        return "g++"
+    return ""
 
 
 def load_image_into_kind(grader: dict[str, Any]) -> None:

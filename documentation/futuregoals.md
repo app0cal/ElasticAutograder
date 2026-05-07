@@ -63,7 +63,7 @@ This completes the resume-safe claim "distributed worker architecture." It does 
 
 ## Future Goal 2: Generalize The Grader Runtime Contract
 
-Status: Not Started
+Status: Finished
 Priority: Immediate
 
 ### Problem
@@ -103,11 +103,11 @@ Graders can use a command-based contract while all runtimes still emit one norma
 
 ### Completion Notes
 
-Not finished yet.
+Finished with v2 manifest support for Python `function_cases` and command-based `stdio_cases`. The runtime now supports optional compile commands, per-case run commands, stdin/stdout comparison, timeouts, stderr capture, and normalized result JSON shared with the existing backend result mapper. Existing legacy Python graders continue to run unchanged.
 
 ## Future Goal 3: Add Java Submission Support
 
-Status: Not Started
+Status: Finished
 Priority: Immediate
 
 ### Problem
@@ -143,11 +143,11 @@ The system can grade one-file Java submissions in isolated Kubernetes Jobs while
 
 ### Completion Notes
 
-Not finished yet.
+Finished for single-file Java stdin/stdout graders. The Java Fibonacci grader uses v2 `stdio_cases`, compiles staged submissions as `Main.java`, runs `javac Main.java` and `java Main`, and includes pass, wrong-answer, compile-error, and runtime-error fixtures. Grader config carries `language: "java"`, Fabric8 injects `GRADER_LANGUAGE`, and setup builds Java-capable grader images.
 
 ## Future Goal 4: Add C++ Submission Support
 
-Status: Not Started
+Status: Finished
 Priority: Immediate
 
 ### Problem
@@ -183,11 +183,11 @@ The system can grade one-file C++ submissions in isolated Kubernetes Jobs while 
 
 ### Completion Notes
 
-Not finished yet.
+Finished for single-file C++ stdin/stdout graders. The C++ Fibonacci grader uses v2 `stdio_cases`, compiles staged submissions as `main.cpp`, runs `g++ -std=c++17 -O2 -Wall -Wextra main.cpp -o main` and `./main`, and includes pass, wrong-answer, compile-error, and runtime-error fixtures. Grader config carries `language: "cpp"`, Fabric8 injects `GRADER_LANGUAGE`, and setup builds C++-capable grader images.
 
 ## Future Goal 5: Document Large Mixed Burst Experiments
 
-Status: Not Started
+Status: In Progress
 Priority: Immediate
 
 ### Problem
@@ -200,7 +200,8 @@ There is documented evidence that the system can accept large mixed bursts, dist
 
 ### Implementation Notes
 
-- Extend the existing burst script to mix Python, Java, and C++ submissions.
+- Extend the existing burst script to mix Python, Java, and C++ submissions with reproducible random selection.
+- Add a `mixed-language-burst` scenario that accepts `--seed` and prints the chosen workload composition.
 - Include passing, partial, wrong-answer, compile-error, runtime-error, timeout, and resource-limit fixtures.
 - Run and document 100, 500, and 1,000 job burst experiments.
 - Report:
@@ -223,7 +224,8 @@ There is documented evidence that the system can accept large mixed bursts, dist
 
 ### Acceptance Checklist
 
-- A mixed-language burst scenario can be run from one documented command.
+- A randomized mixed-language burst scenario can be run from one documented command.
+- Re-running the same mixed-language command with the same seed selects the same fixture mix.
 - Results from at least one 100-job, 500-job, and 1,000-job run are recorded.
 - Documentation explains observed bottlenecks and whether they were Redis, backend workers, Kubernetes capacity, image startup, or grader timeout.
 - Failed jobs are categorized by expected failure reason.
@@ -232,11 +234,13 @@ There is documented evidence that the system can accept large mixed bursts, dist
 
 ### Completion Notes
 
-Not finished yet.
+Not finished yet. Partial progress: the burst script now includes a weighted `mixed-language-burst` scenario that randomly selects Python, Java, C++, timeout, and memory-limit fixtures. The selection is reproducible with `--seed`, and the script prints the selected fixture composition before upload.
+
+A 500-job run exposed `EA-QUEUE-001`: Redis drained to zero while durable Postgres jobs remained `QUEUED`, caused by workers popping messages faster than local executor capacity. The worker now applies local backpressure before popping Redis messages and requeues payloads if task dispatch is rejected. A local recovery helper can requeue stranded pre-fix jobs. Measured 100, 500, and 1,000 job results still need to be recorded after rerunning with the fixed worker.
 
 ## Future Goal 6: Improve Developer And Deployment Experience
 
-Status: Not Started
+Status: In Progress
 Priority: Near Term
 
 ### Problem
@@ -250,6 +254,9 @@ Developers can reliably set up, test, debug, and demonstrate the distributed wor
 ### Implementation Notes
 
 - Update stale docs that still describe local upload storage or browser-triggered grading as the normal path.
+- Keep frontend upload formats aligned with selected grader language so Java and C++ graders are usable from the browser.
+- Make local worker startup expectations explicit: normal single-process testing should run worker-enabled, while API-only mode requires separate worker processes.
+- Document that `./gradlew bootRun --args='--spring.profiles.active=local --grading.worker.enabled=false'` accepts uploads and queues jobs but will not finish them unless another worker-enabled process is running.
 - Add health-check commands for Docker, Redis, Postgres, kind, Kubernetes namespace/RBAC, worker replicas, and grader images.
 - Document common failure modes and recovery steps.
 - Add Docker Compose examples for API-only and worker-replica processes.
@@ -262,11 +269,14 @@ Developers can reliably set up, test, debug, and demonstrate the distributed wor
 - Setup docs include Redis, Postgres, kind, RBAC, worker replicas, and grader image validation.
 - New contributor setup can be validated with one documented smoke test.
 - Distributed worker demo commands are documented.
+- Docs explain how to diagnose jobs stuck in `QUEUED` by checking worker startup logs, Redis queue depth, and Postgres job state.
 - Common failure recovery steps are documented.
 
 ### Completion Notes
 
-Not finished yet.
+Not finished yet. Partial progress: the submit page and upload API now use grader language metadata so Python, Java, and C++ graders advertise and enforce the correct single-file source extensions while keeping `.zip` batch uploads available.
+
+Recent QUEUED-job investigation confirmed an important local workflow distinction: `grading.worker.enabled=false` starts an API-only backend. In that mode uploads still create Postgres jobs and publish Redis messages, but jobs remain `QUEUED` until a worker-enabled backend process consumes the queue. Normal local testing should use `./gradlew bootRun --args='--spring.profiles.active=local'`; API-only mode should be paired with Docker Compose or another worker process.
 
 ## Future Goal 7: Improve Student Feedback And Result Presentation
 

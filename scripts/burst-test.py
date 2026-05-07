@@ -9,8 +9,10 @@ or delete Kubernetes resources.
 from __future__ import annotations
 
 import argparse
+from collections import Counter
 import json
 import mimetypes
+import random
 import sys
 import time
 import uuid
@@ -31,6 +33,7 @@ class ScenarioItem:
     fixture: Path
     expected_statuses: set[str]
     expected_failure_reasons: set[str] | None = None
+    weight: int = 1
 
 
 @dataclass(frozen=True)
@@ -55,7 +58,14 @@ def parse_args() -> argparse.Namespace:
         "scenario",
         nargs="?",
         default="success-burst",
-        choices=["success-burst", "mixed-burst", "performance-timeout", "memory-limit", "queue-pressure"],
+        choices=[
+            "success-burst",
+            "mixed-burst",
+            "mixed-language-burst",
+            "performance-timeout",
+            "memory-limit",
+            "queue-pressure",
+        ],
     )
     parser.add_argument("--api-base", default="http://localhost:8080")
     parser.add_argument("--grader", default="fib")
@@ -66,7 +76,19 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--timeout-seconds", type=int, default=300)
     parser.add_argument("--poll-interval", type=float, default=2.0)
     parser.add_argument("--fixture", type=Path)
-    return parser.parse_args()
+    parser.add_argument("--seed", type=int)
+    parser.add_argument("--selection-mode", choices=["random", "round-robin"])
+    args = parser.parse_args()
+    configure_selection(args)
+    return args
+
+
+def configure_selection(args: argparse.Namespace) -> None:
+    if args.selection_mode is None:
+        args.selection_mode = "random" if args.scenario == "mixed-language-burst" else "round-robin"
+
+    if args.selection_mode == "random" and args.seed is None:
+        args.seed = random.SystemRandom().randrange(0, 2**32)
 
 
 def build_scenario(args: argparse.Namespace) -> list[ScenarioItem]:
@@ -91,6 +113,36 @@ def build_scenario(args: argparse.Namespace) -> list[ScenarioItem]:
             ScenarioItem("fib", fixture("fib", "fibfail1.py"), {"FAILED"}),
             ScenarioItem("fib", fixture("fib", "fibpartial.py"), {"PARTIAL"}),
             ScenarioItem("fib", fixture("emptyfile.py"), {"FAILED"}),
+        ]
+
+    if args.scenario == "mixed-language-burst":
+        return [
+            ScenarioItem("fib", fixture("fib", "fibpass1.py"), {"SUCCEEDED"}, weight=12),
+            ScenarioItem("fib", fixture("fib", "fibfail1.py"), {"FAILED"}, weight=5),
+            ScenarioItem("fib", fixture("fib", "fibpartial.py"), {"PARTIAL"}, weight=5),
+            ScenarioItem("fib", fixture("emptyfile.py"), {"FAILED"}, {"INVALID_UPLOAD"}, weight=3),
+            ScenarioItem("fib-java", fixture("fib-java", "FibPass.java"), {"SUCCEEDED"}, weight=12),
+            ScenarioItem("fib-java", fixture("fib-java", "FibWrong.java"), {"FAILED"}, {"WRONG_ANSWER"}, weight=5),
+            ScenarioItem("fib-java", fixture("fib-java", "FibCompileError.java"), {"FAILED"}, {"INVALID_UPLOAD"}, weight=4),
+            ScenarioItem("fib-java", fixture("fib-java", "FibRuntimeError.java"), {"FAILED"}, {"WRONG_ANSWER"}, weight=4),
+            ScenarioItem("fib-cpp", fixture("fib-cpp", "fib_pass.cpp"), {"SUCCEEDED"}, weight=12),
+            ScenarioItem("fib-cpp", fixture("fib-cpp", "fib_wrong.cpp"), {"FAILED"}, {"WRONG_ANSWER"}, weight=5),
+            ScenarioItem("fib-cpp", fixture("fib-cpp", "fib_compile_error.cpp"), {"FAILED"}, {"INVALID_UPLOAD"}, weight=4),
+            ScenarioItem("fib-cpp", fixture("fib-cpp", "fib_runtime_error.cpp"), {"FAILED"}, {"WRONG_ANSWER"}, weight=4),
+            ScenarioItem(
+                "fib-performance",
+                fixture("fib-performance", "fibslow_recursive.py"),
+                {"FAILED", "DEAD_LETTERED"},
+                {"TIMEOUT", "KUBERNETES_ERROR", "UNKNOWN"},
+                weight=1,
+            ),
+            ScenarioItem(
+                "memory-demo",
+                fixture("memory-demo", "memoryoom.py"),
+                {"FAILED", "DEAD_LETTERED"},
+                {"RESOURCE_LIMIT", "KUBERNETES_ERROR", "UNKNOWN"},
+                weight=1,
+            ),
         ]
 
     if args.scenario == "performance-timeout":
@@ -129,13 +181,14 @@ def resolve_path(path: Path) -> Path:
 
 def upload_jobs(args: argparse.Namespace, scenario_items: list[ScenarioItem]) -> list[SubmittedJob]:
     total = args.count
+    selected_items = select_upload_items(args, scenario_items)
     print(f"Uploading {total} jobs to {args.api_base} with concurrency={args.concurrency}")
+    print_selection_summary(args, selected_items)
     submitted: list[SubmittedJob] = []
 
     with ThreadPoolExecutor(max_workers=args.concurrency) as executor:
         futures = []
-        for index in range(total):
-            item = scenario_items[index % len(scenario_items)]
+        for index, item in enumerate(selected_items):
             futures.append(executor.submit(upload_one, args, item, index + 1))
 
         for future in as_completed(futures):
@@ -144,6 +197,28 @@ def upload_jobs(args: argparse.Namespace, scenario_items: list[ScenarioItem]) ->
 
     print()
     return sorted(submitted, key=lambda job: job.id)
+
+
+def select_upload_items(args: argparse.Namespace, scenario_items: list[ScenarioItem]) -> list[ScenarioItem]:
+    if args.selection_mode == "random":
+        rng = random.Random(args.seed)
+        return rng.choices(
+            scenario_items,
+            weights=[item.weight for item in scenario_items],
+            k=args.count,
+        )
+
+    return [scenario_items[index % len(scenario_items)] for index in range(args.count)]
+
+
+def print_selection_summary(args: argparse.Namespace, selected_items: list[ScenarioItem]) -> None:
+    print(f"Selection mode: {args.selection_mode}")
+    if args.selection_mode == "random":
+        print(f"Selection seed: {args.seed}")
+
+    print("Selected workload:")
+    for label, count in sorted(Counter(item_label(item) for item in selected_items).items()):
+        print(f"  {label}: {count}")
 
 
 def upload_one(args: argparse.Namespace, item: ScenarioItem, upload_number: int) -> list[SubmittedJob]:
@@ -334,6 +409,9 @@ def summarize(
         (int(sample.get("jobCounts", {}).get("DEAD_LETTERED") or 0) for sample in health_samples),
         default=0,
     )
+    final_health = health_samples[-1] if health_samples else {}
+    final_queue_depth = int(final_health.get("queueDepth") or 0)
+    final_queued = int(final_health.get("jobCounts", {}).get("QUEUED") or 0)
     observed_worker_ids = sorted(
         {
             str(job.get("workerId"))
@@ -344,12 +422,20 @@ def summarize(
     )
     if args.scenario == "queue-pressure" and max_queue_depth == 0 and max_queued <= args.concurrency:
         errors.append("queue-pressure did not observe Redis queue depth or durable queued backlog above worker capacity.")
+    if final_queue_depth == 0 and final_queued > 0:
+        errors.append(
+            "Redis queue drained while durable queued jobs remain; possible dropped worker messages."
+        )
     if max_stale > 0:
         errors.append(f"Observed stale running jobs during scenario: max={max_stale}")
 
     print("\nSummary")
     print(f"  Scenario: {args.scenario}")
+    print(f"  Selection mode: {args.selection_mode}")
+    if args.selection_mode == "random":
+        print(f"  Selection seed: {args.seed}")
     print(f"  Submitted jobs: {len(submitted)}")
+    print(f"  Claim: processed a {len(submitted)}-job burst through distributed workers")
     print(f"  Elapsed seconds: {elapsed:.1f}")
     print(f"  Throughput: {len(submitted) / elapsed:.2f} jobs/s" if elapsed > 0 else "  Throughput: n/a")
     print(f"  Status counts: {format_counts(status_counts)}")
@@ -380,6 +466,14 @@ def format_counts(counts: dict[str, int]) -> str:
     if not counts:
         return "none"
     return ", ".join(f"{key}={counts[key]}" for key in sorted(counts))
+
+
+def item_label(item: ScenarioItem) -> str:
+    try:
+        fixture_path = item.fixture.relative_to(REPO_ROOT)
+    except ValueError:
+        fixture_path = item.fixture
+    return f"{item.grader}:{fixture_path}"
 
 
 def first_int(text: str) -> int | None:

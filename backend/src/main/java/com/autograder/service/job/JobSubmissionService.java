@@ -63,13 +63,17 @@ public class JobSubmissionService {
 
         String cleanedGraderType = cleanGraderType(graderType);
         GraderDefinition grader = graderRegistry.getRequired(identity.institution(), cleanedGraderType);
+        validateSingleUploadExtension(file, grader);
 
-        List<StoredSubmission> submissions = submissionStorageService.isZipUpload(file)
-                ? submissionStorageService.storeZip(file, identity)
-                : List.of(submissionStorageService.storeSingle(file, identity));
+        List<StoredSubmission> submissions = List.of();
 
         List<Job> createdJobs = new ArrayList<>();
         try {
+            submissions = submissionStorageService.isZipUpload(file)
+                    ? submissionStorageService.storeZip(file, identity)
+                    : List.of(submissionStorageService.storeSingle(file, identity));
+            validateStoredSubmissionExtensions(submissions, grader);
+
             List<UploadedJobSummary> uploadedJobs = new ArrayList<>();
             for (StoredSubmission submission : submissions) {
                 Job job = createQueuedJob(submission, cleanedGraderType, grader, identity);
@@ -113,6 +117,42 @@ public class JobSubmissionService {
         }
 
         return graderType.trim();
+    }
+
+    private void validateSingleUploadExtension(MultipartFile file, GraderDefinition grader) {
+        if (submissionStorageService.isZipUpload(file)) {
+            return;
+        }
+
+        validateFileNameExtension(file.getOriginalFilename(), grader);
+    }
+
+    private void validateStoredSubmissionExtensions(List<StoredSubmission> submissions, GraderDefinition grader) {
+        for (StoredSubmission submission : submissions) {
+            validateFileNameExtension(submission.originalFileName(), grader);
+        }
+    }
+
+    private void validateFileNameExtension(String fileName, GraderDefinition grader) {
+        String expectedExtension = expectedExtension(grader);
+        if (fileName == null || !fileName.trim().toLowerCase().endsWith(expectedExtension)) {
+            throw new IllegalArgumentException(
+                    "Grader '" + grader.getKey() + "' accepts " + expectedExtension + " or .zip files."
+            );
+        }
+    }
+
+    private String expectedExtension(GraderDefinition grader) {
+        String language = grader.getLanguage();
+        if (language == null || language.isBlank()) {
+            return ".py";
+        }
+
+        return switch (language.trim().toLowerCase()) {
+            case "java" -> ".java";
+            case "cpp", "c++" -> ".cpp";
+            default -> ".py";
+        };
     }
 
     private void cleanupCreatedJobs(List<Job> createdJobs) {

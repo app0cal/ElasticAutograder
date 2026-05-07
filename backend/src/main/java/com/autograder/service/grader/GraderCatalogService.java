@@ -25,6 +25,7 @@ public class GraderCatalogService {
                 .map(grader -> new GraderOptionResponse(
                         grader.getKey(),
                         grader.getLabel(),
+                        grader.getLanguage(),
                         grader.getSummary(),
                         grader.getDetails()
                 ))

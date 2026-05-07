@@ -2,8 +2,10 @@ package com.autograder.service.job;
 
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.UUID;
+import java.util.concurrent.Semaphore;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.core.JsonProcessingException;
 import jakarta.annotation.PreDestroy;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -32,6 +34,7 @@ public class GradingJobWorker {
     private final TaskExecutor gradingTaskExecutor;
     private final JobExecutionService jobExecutionService;
     private final AtomicBoolean running = new AtomicBoolean(false);
+    private final Semaphore executionPermits;
     private final String workerId;
     private Thread pollingThread;
 
@@ -49,6 +52,7 @@ public class GradingJobWorker {
         this.workerProperties = workerProperties;
         this.gradingTaskExecutor = gradingTaskExecutor;
         this.jobExecutionService = jobExecutionService;
+        this.executionPermits = new Semaphore(Math.max(1, workerProperties.getConcurrency()));
         this.workerId = buildWorkerId(workerProperties);
     }
 
@@ -83,6 +87,10 @@ public class GradingJobWorker {
         return workerId;
     }
 
+    int availableExecutionPermits() {
+        return executionPermits.availablePermits();
+    }
+
     @PreDestroy
     public void stop() {
         running.set(false);
@@ -92,21 +100,36 @@ public class GradingJobWorker {
     }
 
     boolean pollOnce() {
-        String payload = redisTemplate.opsForList()
-                .rightPop(queueProperties.getName(), workerProperties.getPollTimeout());
-        if (payload == null) {
+        if (!acquireExecutionPermit()) {
             return false;
         }
 
-        submitPayload(payload);
+        String payload = redisTemplate.opsForList()
+                .rightPop(queueProperties.getName(), workerProperties.getPollTimeout());
+        if (payload == null) {
+            executionPermits.release();
+            return false;
+        }
+
+        submitPayload(payload, true);
         return true;
     }
 
     void submitPayload(String payload) {
+        if (!acquireExecutionPermit()) {
+            requeuePayload(payload, "worker interrupted before task submission");
+            return;
+        }
+
+        submitPayload(payload, true);
+    }
+
+    private void submitPayload(String payload, boolean permitHeld) {
         try {
             GradingJobMessage message = objectMapper.readValue(payload, GradingJobMessage.class);
             if (message.jobId() == null) {
                 logger.warn("Skipping grading queue message without jobId.");
+                releasePermitIfHeld(permitHeld);
                 return;
             }
 
@@ -117,9 +140,44 @@ public class GradingJobWorker {
                     message.attempt(),
                     workerId
             );
-            gradingTaskExecutor.execute(() -> jobExecutionService.executeQueuedJob(message.jobId(), workerId));
-        } catch (Exception e) {
+            gradingTaskExecutor.execute(() -> {
+                try {
+                    jobExecutionService.executeQueuedJob(message.jobId(), workerId);
+                } finally {
+                    releasePermitIfHeld(permitHeld);
+                }
+            });
+        } catch (JsonProcessingException e) {
+            releasePermitIfHeld(permitHeld);
             logger.warn("Skipping malformed grading queue message: {}", e.getMessage());
+        } catch (RuntimeException e) {
+            releasePermitIfHeld(permitHeld);
+            requeuePayload(payload, "task executor rejected grading job: " + e.getMessage());
+        }
+    }
+
+    private boolean acquireExecutionPermit() {
+        try {
+            executionPermits.acquire();
+            return true;
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            return false;
+        }
+    }
+
+    private void releasePermitIfHeld(boolean permitHeld) {
+        if (permitHeld) {
+            executionPermits.release();
+        }
+    }
+
+    private void requeuePayload(String payload, String reason) {
+        try {
+            redisTemplate.opsForList().leftPush(queueProperties.getName(), payload);
+            logger.warn("Requeued grading queue message after failed dispatch: {}", reason);
+        } catch (RuntimeException requeueFailure) {
+            logger.error("Failed to requeue grading queue message after failed dispatch: {}", requeueFailure.getMessage());
         }
     }
 

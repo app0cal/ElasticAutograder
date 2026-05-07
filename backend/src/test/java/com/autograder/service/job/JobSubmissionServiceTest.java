@@ -49,6 +49,8 @@ class JobSubmissionServiceTest {
         );
 
         when(graderRegistry.getRequired("local", "fib")).thenReturn(grader());
+        when(graderRegistry.getRequired("local", "fib-java")).thenReturn(grader("fib-java", "java"));
+        when(graderRegistry.getRequired("local", "fib-cpp")).thenReturn(grader("fib-cpp", "cpp"));
         when(jobRepository.save(any(Job.class))).thenAnswer(invocation -> {
             Job job = invocation.getArgument(0);
             setJobId(job, 1L);
@@ -135,12 +137,101 @@ class JobSubmissionServiceTest {
         assertEquals("graderType is required.", exception.getMessage());
     }
 
+    @Test
+    void upload_javaGraderAcceptsJavaFile() throws Exception {
+        when(submissionStorageService.isZipUpload(any())).thenReturn(false);
+        when(submissionStorageService.storeSingle(any(), any()))
+                .thenReturn(new StoredSubmission(61L, "db:2ee63863-c9ec-4a1f-8ce9-d4db05cc7a5c", "Main.java"));
+
+        UploadJobResponse response = service.upload(
+                file("Main.java"),
+                "fib-java",
+                RequestIdentity.localAnonymous()
+        );
+
+        assertEquals("Successfully queued file.", response.message());
+        verify(jobRepository).save(any(Job.class));
+    }
+
+    @Test
+    void upload_cppGraderAcceptsCppFile() throws Exception {
+        when(submissionStorageService.isZipUpload(any())).thenReturn(false);
+        when(submissionStorageService.storeSingle(any(), any()))
+                .thenReturn(new StoredSubmission(62L, "db:2ee63863-c9ec-4a1f-8ce9-d4db05cc7a5c", "main.cpp"));
+
+        UploadJobResponse response = service.upload(
+                file("main.cpp"),
+                "fib-cpp",
+                RequestIdentity.localAnonymous()
+        );
+
+        assertEquals("Successfully queued file.", response.message());
+        verify(jobRepository).save(any(Job.class));
+    }
+
+    @Test
+    void upload_javaGraderRejectsPythonFileBeforeStorage() throws Exception {
+        when(submissionStorageService.isZipUpload(any())).thenReturn(false);
+
+        IllegalArgumentException exception = assertThrows(
+                IllegalArgumentException.class,
+                () -> service.upload(file("submission.py"), "fib-java", RequestIdentity.localAnonymous())
+        );
+
+        assertEquals("Grader 'fib-java' accepts .java or .zip files.", exception.getMessage());
+        verify(submissionStorageService, times(0)).storeSingle(any(), any());
+        verify(jobRepository, times(0)).save(any());
+    }
+
+    @Test
+    void upload_cppGraderRejectsJavaFileBeforeStorage() throws Exception {
+        when(submissionStorageService.isZipUpload(any())).thenReturn(false);
+
+        IllegalArgumentException exception = assertThrows(
+                IllegalArgumentException.class,
+                () -> service.upload(file("Main.java"), "fib-cpp", RequestIdentity.localAnonymous())
+        );
+
+        assertEquals("Grader 'fib-cpp' accepts .cpp or .zip files.", exception.getMessage());
+        verify(submissionStorageService, times(0)).storeSingle(any(), any());
+        verify(jobRepository, times(0)).save(any());
+    }
+
+    @Test
+    void upload_zipWithWrongExtensionCleansStoredSubmissionsAndRejects() throws Exception {
+        when(submissionStorageService.isZipUpload(any())).thenReturn(true);
+        when(submissionStorageService.storeZip(any(), any())).thenReturn(List.of(
+                new StoredSubmission(71L, "db:0884c63f-9d50-4055-9a1a-69ec4507ba2e", "Main.java"),
+                new StoredSubmission(72L, "db:d2bddbb4-479d-43f7-aee2-e3bb4d818ff1", "helper.py")
+        ));
+
+        IllegalArgumentException exception = assertThrows(
+                IllegalArgumentException.class,
+                () -> service.upload(file("batch.zip"), "fib-java", RequestIdentity.localAnonymous())
+        );
+
+        assertEquals("Grader 'fib-java' accepts .java or .zip files.", exception.getMessage());
+        verify(submissionStorageService).deleteIfExists("db:0884c63f-9d50-4055-9a1a-69ec4507ba2e");
+        verify(submissionStorageService).deleteIfExists("db:d2bddbb4-479d-43f7-aee2-e3bb4d818ff1");
+        verify(jobRepository, times(0)).save(any());
+    }
+
     private MockMultipartFile file() {
-        return new MockMultipartFile("file", "submission.py", "text/plain", "print('hello')".getBytes());
+        return file("submission.py");
+    }
+
+    private MockMultipartFile file(String fileName) {
+        return new MockMultipartFile("file", fileName, "text/plain", "print('hello')".getBytes());
     }
 
     private GraderDefinition grader() {
         return new GraderDefinition("fib", "Fibonacci", "ea-grader-fib:v1", "/app/grader/manifest.json");
+    }
+
+    private GraderDefinition grader(String key, String language) {
+        GraderDefinition grader = new GraderDefinition(key, key, "ea-grader-" + key + ":v1", "/app/grader/manifest.json");
+        grader.setLanguage(language);
+        return grader;
     }
 
     private void setJobId(Job job, Long id) throws Exception {

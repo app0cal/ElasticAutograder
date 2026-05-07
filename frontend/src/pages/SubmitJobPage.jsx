@@ -17,6 +17,7 @@ export default function SubmitJobPage() {
   const selectedGraderInfo = graders.find(
     (grader) => grader.key === selectedGrader
   );
+  const acceptedFormat = getAcceptedFormat(selectedGraderInfo);
   const isReadyToSubmit = Boolean(selectedGrader && file);
   const progressSteps = [
     { label: "Grader", isComplete: Boolean(selectedGrader), isActive: !selectedGrader },
@@ -41,12 +42,31 @@ export default function SubmitJobPage() {
   }, []);
 
   const handleFileChange = (e) => {
-    setFile(e.target.files[0] ?? null);
+    const selectedFile = e.target.files[0] ?? null;
+    if (selectedFile && !isFileAllowed(selectedFile, acceptedFormat)) {
+      setFile(null);
+      setStatus(acceptedFormat.errorMessage);
+      if (fileInputRef.current) {
+        fileInputRef.current.value = "";
+      }
+      return;
+    }
+
+    setFile(selectedFile);
     setStatus("");
   };
 
   const handleGraderChange = (e) => {
-    setSelectedGrader(e.target.value);
+    const nextGrader = e.target.value;
+    const nextGraderInfo = graders.find((grader) => grader.key === nextGrader);
+    const nextAcceptedFormat = getAcceptedFormat(nextGraderInfo);
+    setSelectedGrader(nextGrader);
+    if (file && !isFileAllowed(file, nextAcceptedFormat)) {
+      setFile(null);
+      if (fileInputRef.current) {
+        fileInputRef.current.value = "";
+      }
+    }
     setStatus("");
   };
 
@@ -57,7 +77,14 @@ export default function SubmitJobPage() {
       return;
     }
 
-    setFile(e.dataTransfer.files[0] ?? null);
+    const droppedFile = e.dataTransfer.files[0] ?? null;
+    if (droppedFile && !isFileAllowed(droppedFile, acceptedFormat)) {
+      setFile(null);
+      setStatus(acceptedFormat.errorMessage);
+      return;
+    }
+
+    setFile(droppedFile);
     setStatus("");
   };
 
@@ -79,6 +106,11 @@ export default function SubmitJobPage() {
 
     if (!selectedGrader) {
       setStatus("Please select a grader.");
+      return;
+    }
+
+    if (!isFileAllowed(file, acceptedFormat)) {
+      setStatus(acceptedFormat.errorMessage);
       return;
     }
 
@@ -181,7 +213,7 @@ export default function SubmitJobPage() {
                 <span className="submit-upload-icon">
                   <FileIcon />
                 </span>
-                <span className="submit-upload-title">Drop a `.py` file or `.zip` archive here</span>
+                <span className="submit-upload-title">{acceptedFormat.dropLabel}</span>
                 <span className="submit-upload-copy">or browse from your device</span>
                 <span className="submit-browse-button">Browse files</span>
                 <input
@@ -189,7 +221,7 @@ export default function SubmitJobPage() {
                   ref={fileInputRef}
                   className="submit-upload-input"
                   type="file"
-                  accept=".py,.zip"
+                  accept={acceptedFormat.accept}
                   onChange={handleFileChange}
                   disabled={isSubmitting}
                 />
@@ -204,7 +236,7 @@ export default function SubmitJobPage() {
                 <span className="file-meta-label">Selected file</span>
                 <span className="file-meta-name">{file ? file.name : "No file selected"}</span>
               </div>
-              <span className="submit-file-size">{file ? formatFileSize(file.size) : ".py or .zip"}</span>
+              <span className="submit-file-size">{file ? formatFileSize(file.size) : acceptedFormat.shortLabel}</span>
             </div>
 
             <div className="submit-actions">
@@ -273,7 +305,7 @@ export default function SubmitJobPage() {
             <div className="submit-context-block">
               <span className="submit-context-label">Accepted formats</span>
               <div className="submit-format-list">
-                <span>.py</span>
+                <span>{acceptedFormat.sourceExtension}</span>
                 <span>.zip</span>
               </div>
             </div>
@@ -283,7 +315,7 @@ export default function SubmitJobPage() {
             <div className="submit-context-block">
               <span className="submit-context-label">Runtime environment</span>
               <div className="submit-runtime">
-                <strong>Python grading image</strong>
+                <strong>{acceptedFormat.runtimeLabel}</strong>
                 <span>Isolated container execution</span>
               </div>
             </div>
@@ -292,6 +324,41 @@ export default function SubmitJobPage() {
       </div>
     </div>
   );
+}
+
+function isFileAllowed(file, acceptedFormat) {
+  if (!file?.name) {
+    return false;
+  }
+
+  const fileName = file.name.toLowerCase();
+  return fileName.endsWith(acceptedFormat.sourceExtension) || fileName.endsWith(".zip");
+}
+
+function getAcceptedFormat(grader) {
+  const language = (grader?.language || "python").toLowerCase();
+
+  if (language === "java") {
+    return buildAcceptedFormat(".java", "Java grading image");
+  }
+
+  if (language === "cpp" || language === "c++") {
+    return buildAcceptedFormat(".cpp", "C++ grading image");
+  }
+
+  return buildAcceptedFormat(".py", "Python grading image");
+}
+
+function buildAcceptedFormat(sourceExtension, runtimeLabel) {
+  const shortLabel = `${sourceExtension} or .zip`;
+  return {
+    sourceExtension,
+    runtimeLabel,
+    accept: `${sourceExtension},.zip`,
+    shortLabel,
+    dropLabel: `Drop a ${sourceExtension} file or .zip archive here`,
+    errorMessage: `This grader accepts ${shortLabel} files.`
+  };
 }
 
 function formatFileSize(size) {

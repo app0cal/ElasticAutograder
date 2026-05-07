@@ -1,0 +1,42 @@
+{
+  "manifestVersion": 2,
+  "assignmentKey": "fib-cpp",
+  "problemType": "stdio_cases",
+  "comparison": {
+    "mode": "exact"
+  },
+  "cases": [
+    {
+      "name": "case_0",
+      "input": { "stdin": "0\n" },
+      "expected": { "stdout": "0\n" }
+    },
+    {
+      "name": "case_1",
+      "input": { "stdin": "1\n" },
+      "expected": { "stdout": "1\n" }
+    },
+    {
+      "name": "case_5",
+      "input": { "stdin": "5\n" },
+      "expected": { "stdout": "5\n" }
+    },
+    {
+      "name": "case_10",
+      "input": { "stdin": "10\n" },
+      "expected": { "stdout": "55\n" }
+    }
+  ],
+  "languages": {
+    "cpp": {
+      "adapter": {
+        "mode": "stdio",
+        "compileCommand": ["g++", "-std=c++17", "-O2", "-Wall", "-Wextra", "main.cpp", "-o", "main"],
+        "runCommand": ["./main"]
+      },
+      "submission": {
+        "fileName": "main.cpp"
+      }
+    }
+  }
+}

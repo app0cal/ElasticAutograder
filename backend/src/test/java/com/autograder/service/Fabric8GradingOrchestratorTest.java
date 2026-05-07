@@ -190,6 +190,22 @@ class Fabric8GradingOrchestratorTest {
         assertEquals("512", container.getResources().getLimits().get("memory").getAmount());
         assertEquals("Mi", container.getResources().getLimits().get("memory").getFormat());
         assertEquals("/work", container.getVolumeMounts().get(0).getMountPath());
+        assertTrue(container.getEnv() == null || container.getEnv().isEmpty());
+    }
+
+    @Test
+    void buildGradingJob_setsGraderLanguageEnvWhenConfigured() {
+        GraderDefinition grader = createGrader();
+        grader.setKey("fib-java");
+        grader.setLanguage("java");
+
+        var job = orchestrator.buildGradingJob(56L, grader, "university-a");
+        var env = job.getSpec().getTemplate().getSpec().getContainers().get(0).getEnv();
+
+        assertNotNull(env);
+        assertTrue(env.stream().anyMatch(envVar ->
+                "GRADER_LANGUAGE".equals(envVar.getName()) && "java".equals(envVar.getValue())
+        ));
     }
 
     /**

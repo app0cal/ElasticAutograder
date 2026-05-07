@@ -128,6 +128,10 @@ public class GraderConfigLoader {
         } else {
             grader.setGraderFolder(grader.getGraderFolder().trim());
         }
+
+        if (grader.getLanguage() != null) {
+            grader.setLanguage(grader.getLanguage().trim());
+        }
     }
 
     /**
@@ -184,6 +188,10 @@ public class GraderConfigLoader {
 
       if (grader.getImageName() == null || grader.getImageName().isBlank()) {
           throw new IllegalStateException("Grader '" + grader.getKey() + "' is missing an imageName.");
+      }
+
+      if (grader.getLanguage() != null && grader.getLanguage().isBlank()) {
+          throw new IllegalStateException("Grader '" + grader.getKey() + "' has invalid language.");
       }
 
       if (grader.getGraderFolder() == null || grader.getGraderFolder().isBlank()) {

@@ -35,6 +35,7 @@ class GraderConfigLoaderTest {
                       "key": "fib",
                       "label": "Fibonacci",
                       "imageName": "ea-grader-fibbonaci:v1",
+                      "language": "python",
                       "manifestPath": "/app/grader/manifest.json",
                       "summary": "Classic dynamic programming problem.",
                       "details": [
@@ -77,6 +78,7 @@ class GraderConfigLoaderTest {
         assertEquals("fib", fib.getKey());
         assertEquals("Fibonacci", fib.getLabel());
         assertEquals("ea-grader-fibbonaci:v1", fib.getImageName());
+        assertEquals("python", fib.getLanguage());
         assertEquals("/app/grader/manifest.json", fib.getManifestPath());
         assertEquals("Classic dynamic programming problem.", fib.getSummary());
         assertEquals(2, fib.getDetails().size());
@@ -363,6 +365,33 @@ class GraderConfigLoaderTest {
         assertEquals(500, grader.getCpuLimitMilli());
         assertEquals(128, grader.getMemoryRequestMb());
         assertEquals(512, grader.getMemoryLimitMb());
+    }
+
+    @Test
+    void loadGraders_optionalLanguage_trimsAndPreservesValue() throws Exception {
+        Path configFile = tempDir.resolve("graders.json");
+
+        String json = """
+                {
+                  "graders": [
+                    {
+                      "key": "fib-java",
+                      "label": "Fibonacci Java",
+                      "imageName": "ea-grader-fib-java:v1",
+                      "language": " java ",
+                      "manifestPath": "/app/grader/manifest.json",
+                      "summary": "Read n from stdin and print Fibonacci.",
+                      "details": ["Submit a single Java file."]
+                    }
+                  ]
+                }
+                """;
+
+        Files.writeString(configFile, json);
+
+        GraderDefinition grader = createLoader().loadGraders(configFile).get(0);
+
+        assertEquals("java", grader.getLanguage());
     }
 
     /**

@@ -20,6 +20,7 @@ class GraderOptionResponseTest {
 
         assertEquals("fib", response.getKey());
         assertEquals("Fibonacci", response.getLabel());
+        assertEquals("python", response.getLanguage());
         assertEquals("No details provided.", response.getSummary());
         assertEquals(List.of(), response.getDetails());
     }
@@ -36,11 +37,13 @@ class GraderOptionResponseTest {
         GraderOptionResponse response = new GraderOptionResponse(
                 "fib",
                 "Fibonacci",
+                "java",
                 "Dynamic programming warm-up.",
                 details
         );
         details.add("Changed after construction.");
 
+        assertEquals("java", response.getLanguage());
         assertEquals("Dynamic programming warm-up.", response.getSummary());
         assertEquals(List.of("Return the nth Fibonacci number."), response.getDetails());
         assertThrows(UnsupportedOperationException.class, () -> response.getDetails().add("new detail"));
@@ -55,10 +58,12 @@ class GraderOptionResponseTest {
         GraderOptionResponse response = new GraderOptionResponse(
                 "twosum",
                 "Two Sum",
+                null,
                 "Hash map problem.",
                 null
         );
 
+        assertEquals("python", response.getLanguage());
         assertEquals(List.of(), response.getDetails());
     }
 }

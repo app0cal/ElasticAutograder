@@ -6,8 +6,11 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.annotation.Primary;
 import org.springframework.stereotype.Service;
 
+import java.util.ArrayList;
+
 import io.fabric8.kubernetes.api.model.ConfigMap;
 import io.fabric8.kubernetes.api.model.ConfigMapBuilder;
+import io.fabric8.kubernetes.api.model.EnvVarBuilder;
 import io.fabric8.kubernetes.api.model.Pod;
 import io.fabric8.kubernetes.api.model.PodList;
 import io.fabric8.kubernetes.api.model.batch.v1.Job;
@@ -229,7 +232,7 @@ public class Fabric8GradingOrchestrator implements GradingOrchestrator {
         // important note for understanding this, this basically is just a yaml file so it'll look crazy unless you understand k8s yaml structure
         // Template is under backend/grading/graders if you want a reference to how this should look in yaml format but this as pretty as it gets
         // for using k8s :D 
-        return new JobBuilder()
+        Job job = new JobBuilder()
             .withNewMetadata()
                 .withName(jobName)
                 .addToLabels("app", "elastic-autograder")
@@ -285,6 +288,30 @@ public class Fabric8GradingOrchestrator implements GradingOrchestrator {
                 .endTemplate()
             .endSpec()
             .build();
+
+        addGraderLanguageEnv(job, grader);
+        return job;
+    }
+
+    private void addGraderLanguageEnv(Job job, GraderDefinition grader) {
+        if (grader.getLanguage() == null || grader.getLanguage().isBlank()) {
+            return;
+        }
+
+        var container = job.getSpec()
+                .getTemplate()
+                .getSpec()
+                .getContainers()
+                .get(0);
+
+        if (container.getEnv() == null) {
+            container.setEnv(new ArrayList<>());
+        }
+
+        container.getEnv().add(new EnvVarBuilder()
+                .withName("GRADER_LANGUAGE")
+                .withValue(grader.getLanguage())
+                .build());
     }
 
     /**
