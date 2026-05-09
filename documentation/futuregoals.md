@@ -240,7 +240,7 @@ A 500-job run exposed `EA-QUEUE-001`: Redis drained to zero while durable Postgr
 
 ## Future Goal 6: Improve Developer And Deployment Experience
 
-Status: In Progress
+Status: Finished
 Priority: Near Term
 
 ### Problem
@@ -253,14 +253,12 @@ Developers can reliably set up, test, debug, and demonstrate the distributed wor
 
 ### Implementation Notes
 
-- Update stale docs that still describe local upload storage or browser-triggered grading as the normal path.
+- Keep stale docs aligned with the current async queue path.
 - Keep frontend upload formats aligned with selected grader language so Java and C++ graders are usable from the browser.
 - Make local worker startup expectations explicit: normal single-process testing should run worker-enabled, while API-only mode requires separate worker processes.
-- Document that `./gradlew bootRun --args='--spring.profiles.active=local --grading.worker.enabled=false'` accepts uploads and queues jobs but will not finish them unless another worker-enabled process is running.
-- Add health-check commands for Docker, Redis, Postgres, kind, Kubernetes namespace/RBAC, worker replicas, and grader images.
+- Provide read-only diagnostics for Docker, Redis, Postgres, kind, Kubernetes namespace/RBAC, grader images, and backend health.
+- Provide one end-to-end smoke test that creates a real job and verifies the API, queue, worker, and Kubernetes grader path.
 - Document common failure modes and recovery steps.
-- Add Docker Compose examples for API-only and worker-replica processes.
-- Add production-style deployment notes for Redis, Postgres, backend workers, Kubernetes namespace/RBAC, and grader image publication.
 - Keep the local kind workflow simple for contributors.
 
 ### Acceptance Checklist
@@ -274,13 +272,17 @@ Developers can reliably set up, test, debug, and demonstrate the distributed wor
 
 ### Completion Notes
 
-Not finished yet. Partial progress: the submit page and upload API now use grader language metadata so Python, Java, and C++ graders advertise and enforce the correct single-file source extensions while keeping `.zip` batch uploads available.
+Finished for the local contributor and demo workflow. The submit page and upload API use grader language metadata so Python, Java, and C++ graders advertise and enforce the correct single-file source extensions while keeping `.zip` batch uploads available.
 
 Recent QUEUED-job investigation confirmed an important local workflow distinction: `grading.worker.enabled=false` starts an API-only backend. In that mode uploads still create Postgres jobs and publish Redis messages, but jobs remain `QUEUED` until a worker-enabled backend process consumes the queue. Normal local testing should use `./gradlew bootRun --args='--spring.profiles.active=local'`; API-only mode should be paired with the Docker Compose `app` profile or another worker process.
 
+The documentation now covers setup, daily startup, Docker Compose profiles, shutdown, common recovery steps, and release shape. `scripts/doctor.py` provides read-only checks for local tools, Compose services, kind, Kubernetes namespace/RBAC, grader images, and backend health. `scripts/smoke-test.py` creates one known-good Fibonacci job and waits for `SUCCEEDED`, printing queue-health-based troubleshooting hints if the job stays queued or fails.
+
+Production deployment remains a separate future hardening track. This goal completes the local developer experience baseline rather than claiming a production-ready installer.
+
 ## Future Goal 7: Improve Student Feedback And Result Presentation
 
-Status: Not Started
+Status: Finished
 Priority: Near Term
 
 ### Problem
@@ -308,7 +310,11 @@ Job details show clear feedback for normalized test results and language-specifi
 
 ### Completion Notes
 
-Not finished yet.
+Finished for the current frontend presentation scope. Job details now normalize stored result JSON from both array and `{ results: [...] }` shapes, render student-facing outcome text in the Summary card, and show individual result cards with test name, kind, pass/fail state, and safe runtime messages.
+
+Failure details now avoid misleading messages for successful, partial, queued, running, failed, and dead-lettered jobs. Raw JSON download remains available for debugging, and the backend result schema is unchanged.
+
+This does not add hidden-test policy, instructor-specific feedback controls, or richer backend result typing. Those remain future product/backend feedback concerns if assignments need per-test visibility rules.
 
 ## Future Goal 8: Support Multi-File And Project Submissions
 

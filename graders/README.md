@@ -33,6 +33,28 @@ The setup script uses Docker layer cache by default and builds reusable runtime 
 python scripts/setup-graders.py --no-cache
 ```
 
+## Source Hash Labels
+
+`scripts/setup-graders.py` adds a source-hash label to each runtime base image and grader image that it builds. The label stores a SHA-256 hash of the inputs that define the image, which lets later setup runs identify images that are already up to date and skip rebuilding or reloading them into kind.
+
+Runtime base image hashes are created from:
+
+- `runtime/Dockerfile.base`
+- `runtime/main.py`
+- the runtime language, such as Python, Java, or C++
+- the runtime package list, such as `default-jdk-headless` or `g++`
+
+Individual grader image hashes are created from:
+
+- `runtime/Dockerfile`
+- every file in that grader's folder
+- the grader key, folder, and language
+- the Docker image ID of the runtime base image it depends on
+
+This means repeat setup runs are fast when files are unchanged. For example, if many graders exist and only a few grader folders changed, setup rebuilds and reloads only the changed grader images.
+
+Important: base image changes fan out to every dependent grader. If `runtime/main.py`, `runtime/Dockerfile.base`, or a runtime package changes, the related base image gets a new identity, and every grader that uses that base image must be rebuilt.
+
 The default setup path is serial for predictable release installs. To opt into faster local rebuilds:
 
 ```bash

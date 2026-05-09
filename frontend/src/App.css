@@ -973,6 +973,56 @@
   word-break: break-word;
 }
 
+.job-outcome-summary {
+  margin-top: 14px;
+  padding: 14px;
+  border-radius: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  line-height: 1.5;
+}
+
+.job-outcome-summary strong {
+  display: block;
+  margin-bottom: 4px;
+  color: #ffffff;
+}
+
+.job-outcome-summary p {
+  margin: 0;
+  color: #d7dde7;
+  overflow-wrap: anywhere;
+}
+
+.job-outcome-active {
+  background: rgba(70, 160, 255, 0.08);
+  border-color: rgba(70, 160, 255, 0.18);
+}
+
+.job-outcome-success {
+  background: rgba(46, 204, 113, 0.08);
+  border-color: rgba(46, 204, 113, 0.2);
+}
+
+.job-outcome-partial {
+  background: rgba(255, 166, 0, 0.08);
+  border-color: rgba(255, 166, 0, 0.2);
+}
+
+.job-outcome-failed {
+  background: rgba(255, 99, 99, 0.08);
+  border-color: rgba(255, 99, 99, 0.2);
+}
+
+.job-outcome-warning {
+  background: rgba(255, 214, 10, 0.08);
+  border-color: rgba(255, 214, 10, 0.18);
+}
+
+.job-outcome-neutral {
+  background: rgba(255, 255, 255, 0.04);
+  border-color: rgba(255, 255, 255, 0.08);
+}
+
 .job-details-list {
   display: flex;
   flex-direction: column;
@@ -1001,35 +1051,59 @@
   white-space: pre-wrap;
 }
 
-.job-results-table-wrapper {
-  overflow-x: auto;
+.job-results-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
 }
 
-.job-results-table {
-  width: 100%;
-  border-collapse: collapse;
+.job-result-card {
+  padding: 14px;
+  border-radius: 12px;
   border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.03);
 }
 
-.job-results-table th,
-.job-results-table td {
-  padding: 12px;
-  text-align: left;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
-  vertical-align: top;
-}
-
-.job-results-table th {
-  background: rgba(255, 255, 255, 0.05);
-  color: #f3f4f6;
-}
-
-.job-result-passed {
+.job-result-card-passed {
   background: rgba(46, 204, 113, 0.06);
+  border-color: rgba(46, 204, 113, 0.16);
 }
 
-.job-result-failed {
+.job-result-card-failed {
   background: rgba(255, 99, 99, 0.08);
+  border-color: rgba(255, 99, 99, 0.2);
+}
+
+.job-result-card-unknown {
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.job-result-card-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 10px;
+}
+
+.job-result-card-title {
+  margin: 0;
+  color: #ffffff;
+  font-size: 1rem;
+}
+
+.job-result-card-meta {
+  margin: 4px 0 0;
+  color: #9aa7b8;
+  font-size: 0.9rem;
+}
+
+.job-result-message {
+  margin: 0;
+  color: #d7dde7;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
 }
 
 @media (max-width: 860px) {

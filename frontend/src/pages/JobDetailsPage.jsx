@@ -104,10 +104,11 @@ export default function JobDetailsPage() {
   }, [graders]);
 
   const graderLabel = graderLabelMap.get(job?.graderType) ?? job?.graderType ?? "";
-  const results = parseResults(job?.resultJson);
+  const results = parseResultEntries(job?.resultJson);
   const isActive = ACTIVE_STATUSES.has(job?.status);
   const canDownload = Boolean(job?.resultJson);
   const emptyResultMessage = getEmptyResultMessage(job);
+  const outcomeSummary = getOutcomeSummary(job, results);
 
   async function handleDownloadResults() {
     setDownloadError("");
@@ -202,20 +203,24 @@ export default function JobDetailsPage() {
               />
               <DetailItem label="Score" value={formatScore(job.score)} />
               <DetailItem label="Tests" value={formatTests(job.testsPassed, job.testsTotal)} />
-              <DetailItem label="Failure Type" value={formatValue(job.failureReason)} />
+              <DetailItem label="Failure Type" value={formatFailureReason(job.failureReason)} />
+            </div>
+            <div className={`job-outcome-summary job-outcome-${outcomeSummary.tone}`}>
+              <strong>{outcomeSummary.title}</strong>
+              <p>{outcomeSummary.description}</p>
             </div>
           </section>
 
           <section className="card job-details-card">
             <h2 className="job-details-section-title">Metadata</h2>
             <div className="job-details-list">
-              <DetailRow label="Grader Image" value={formatValue(job.graderImage)} />
-              <DetailRow label="Submitted File" value={formatValue(job.originalFilename)} />
-              <DetailRow label="Institution" value={formatValue(job.institutionId)} />
-              <DetailRow label="Submitted By" value={formatValue(job.submittedBy)} />
-              <DetailRow label="Kubernetes Job" value={formatValue(job.k8sJobName)} />
-              <DetailRow label="Worker" value={formatValue(job.workerId)} />
-              <DetailRow label="Queue Message" value={formatValue(job.queueMessageId)} />
+              <DetailRow label="Grader Image" value={formatDiagnosticValue(job.graderImage)} />
+              <DetailRow label="Submitted File" value={formatDiagnosticValue(job.originalFilename)} />
+              <DetailRow label="Institution" value={formatDiagnosticValue(job.institutionId)} />
+              <DetailRow label="Submitted By" value={formatDiagnosticValue(job.submittedBy)} />
+              <DetailRow label="Kubernetes Job Name" value={formatDiagnosticValue(job.k8sJobName)} />
+              <DetailRow label="Worker ID" value={formatDiagnosticValue(job.workerId)} />
+              <DetailRow label="Queue Message ID" value={formatDiagnosticValue(job.queueMessageId)} />
             </div>
           </section>
 
@@ -236,10 +241,10 @@ export default function JobDetailsPage() {
           <section className="card job-details-card">
             <h2 className="job-details-section-title">Failure Details</h2>
             <div className="job-details-list">
-              <DetailRow label="Failure Reason" value={formatValue(job.failureReason)} />
+              <DetailRow label="Failure Reason" value={formatFailureReason(job.failureReason)} />
               <DetailRow
                 label="Failure Message"
-                value={job.failureMessage ? job.failureMessage : "No failure message recorded for this job."}
+                value={getFailureMessage(job)}
                 multiline
               />
             </div>
@@ -251,39 +256,32 @@ export default function JobDetailsPage() {
           {results.length === 0 ? (
             <p className="muted">{emptyResultMessage}</p>
           ) : (
-            <div className="job-results-table-wrapper">
-              <table className="job-results-table">
-                <thead>
-                  <tr>
-                    <th>Name</th>
-                    <th>Kind</th>
-                    <th>Outcome</th>
-                    <th>Message</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {results.map((result, index) => (
-                    <tr
-                      key={`${result.name ?? "result"}-${index}`}
-                      className={result.passed ? "job-result-passed" : "job-result-failed"}
-                    >
-                      <td>{result.name ?? "Unnamed result"}</td>
-                      <td>{result.kind ?? "unknown"}</td>
-                      <td>
-                        <span className={`status-pill status-${result.passed ? "succeeded" : "failed"}`}>
-                          {result.passed ? "Passed" : "Failed"}
-                        </span>
-                      </td>
-                      <td>{result.message ?? "No message provided."}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+            <div className="job-results-list">
+              {results.map((result) => (
+                <ResultEntryCard key={result.id} result={result} />
+              ))}
             </div>
           )}
         </section>
       </div>
     </div>
+  );
+}
+
+function ResultEntryCard({ result }) {
+  return (
+    <article className={`job-result-card ${result.cardClassName}`}>
+      <div className="job-result-card-header">
+        <div>
+          <h3 className="job-result-card-title">{result.name}</h3>
+          <p className="job-result-card-meta">{result.kindLabel}</p>
+        </div>
+        <span className={`status-pill status-${result.outcomeStatusClass}`}>
+          {result.outcomeLabel}
+        </span>
+      </div>
+      <p className="job-result-message">{result.message}</p>
+    </article>
   );
 }
 
@@ -305,26 +303,204 @@ function DetailRow({ label, value, multiline = false }) {
   );
 }
 
-function parseResults(resultJson) {
+function parseResultEntries(resultJson) {
   if (!resultJson) {
     return [];
   }
 
   try {
     const parsed = JSON.parse(resultJson);
+    const rawEntries = Array.isArray(parsed) ? parsed : parsed?.results;
 
-    if (Array.isArray(parsed)) {
-      return parsed;
-    }
-
-    if (Array.isArray(parsed.results)) {
-      return parsed.results;
+    if (Array.isArray(rawEntries)) {
+      return rawEntries.map((entry, index) => normalizeResultEntry(entry, index));
     }
   } catch {
     return [];
   }
 
   return [];
+}
+
+function normalizeResultEntry(entry, index) {
+  const result = entry && typeof entry === "object" ? entry : {};
+  const passed = typeof result.passed === "boolean" ? result.passed : null;
+  const outcomeLabel = passed === true ? "Passed" : passed === false ? "Failed" : "Unknown";
+  const outcomeStatusClass = passed === true ? "succeeded" : passed === false ? "failed" : "cancelled";
+
+  return {
+    id: `${result.name || "result"}-${index}`,
+    name: normalizeResultName(result.name, index),
+    kindLabel: formatResultKind(result.kind),
+    outcomeLabel,
+    outcomeStatusClass,
+    outcomeClass: passed === true ? "passed" : passed === false ? "failed" : "unknown",
+    cardClassName: passed === true
+      ? "job-result-card-passed"
+      : passed === false
+        ? "job-result-card-failed"
+        : "job-result-card-unknown",
+    passed,
+    message: formatSafeMessage(result.message)
+  };
+}
+
+function normalizeResultName(name, index) {
+  return typeof name === "string" && name.trim() ? name : `Result ${index + 1}`;
+}
+
+function formatResultKind(kind) {
+  return typeof kind === "string" && kind.trim() ? formatValue(kind) : "Test";
+}
+
+function formatSafeMessage(message) {
+  return typeof message === "string" && message.trim() ? message : "No message provided.";
+}
+
+function formatFailureReason(reason) {
+  return formatValue(reason);
+}
+
+function formatDiagnosticValue(value) {
+  return formatValue(value);
+}
+
+function getFailureMessage(job) {
+  if (!job) {
+    return "No failure message recorded for this job.";
+  }
+
+  if (job.status === "SUCCEEDED") {
+    return "No failure recorded.";
+  }
+
+  if (job.status === "PARTIAL") {
+    return "No terminal failure recorded. Review failed result cases if present.";
+  }
+
+  if (ACTIVE_STATUSES.has(job.status)) {
+    return "Failure details will appear here if grading fails.";
+  }
+
+  if ((job.status === "FAILED" || job.status === "DEAD_LETTERED") && job.failureMessage) {
+    return job.failureMessage;
+  }
+
+  return "No failure message recorded for this job.";
+}
+
+function getOutcomeSummary(job, results) {
+  if (!job) {
+    return {
+      title: "Status unavailable",
+      description: "The job status is not recognized by the current interface.",
+      tone: "neutral"
+    };
+  }
+
+  const testsSummary = formatOutcomeTests(job.testsPassed, job.testsTotal);
+
+  switch (job.status) {
+    case "QUEUED":
+      return {
+        title: "Waiting for a worker",
+        description: "This job has been accepted and is waiting for background grading to begin.",
+        tone: "active"
+      };
+    case "RUNNING":
+      return {
+        title: "Grading in progress",
+        description: "The submission is currently running in the grader. This page will refresh automatically.",
+        tone: "active"
+      };
+    case "SUCCEEDED":
+      return {
+        title: "All recorded tests passed",
+        description: testsSummary ?? "The grader completed successfully.",
+        tone: "success"
+      };
+    case "PARTIAL":
+      return {
+        title: "Some tests passed",
+        description: testsSummary
+          ? `${testsSummary} Review the failed cases below.`
+          : "The grader awarded partial credit. Review the results below.",
+        tone: "partial"
+      };
+    case "FAILED":
+      return getFailedOutcomeSummary(job.failureReason, results);
+    case "DEAD_LETTERED":
+      return {
+        title: "Retry attempts exhausted",
+        description: "The job failed after its retry attempts were used. Check the failure details and worker or Kubernetes logs.",
+        tone: "warning"
+      };
+    case "CANCELLED":
+      return {
+        title: "Job cancelled",
+        description: "This grading job was cancelled before producing a final result.",
+        tone: "neutral"
+      };
+    default:
+      return {
+        title: "Status unavailable",
+        description: "The job status is not recognized by the current interface.",
+        tone: "neutral"
+      };
+  }
+}
+
+function getFailedOutcomeSummary(failureReason, results) {
+  switch (failureReason) {
+    case "WRONG_ANSWER":
+      return {
+        title: "Output did not match",
+        description: "The submission ran, but one or more results did not match the grader expectation. Review the failed cases below.",
+        tone: "failed"
+      };
+    case "INVALID_UPLOAD":
+      return {
+        title: "Submission could not be graded",
+        description: "The grader could not build, load, or validate this submission. Check the failure message for details.",
+        tone: "failed"
+      };
+    case "TIMEOUT":
+      return {
+        title: "Execution timed out",
+        description: "The submission exceeded the allowed execution time. Check for slow or non-terminating code.",
+        tone: "warning"
+      };
+    case "RESOURCE_LIMIT":
+      return {
+        title: "Resource limit exceeded",
+        description: "The submission used more memory or compute resources than the grader allows.",
+        tone: "warning"
+      };
+    case "KUBERNETES_ERROR":
+      return {
+        title: "Grader infrastructure failed",
+        description: "The grading job failed before a normal result could be produced. This is likely an environment or Kubernetes issue.",
+        tone: "warning"
+      };
+    case "UNKNOWN":
+      return {
+        title: "Grading failed",
+        description: "The grader failed for an uncategorized reason. Check the failure message for details.",
+        tone: "warning"
+      };
+    default:
+      return {
+        title: "Grading failed",
+        description: results.some((result) => result.passed === false)
+          ? "Review the failed cases below."
+          : "Check the failure details for the recorded reason.",
+        tone: "failed"
+      };
+  }
+}
+
+function formatOutcomeTests(passed, total) {
+  return passed != null && total != null ? `Passed ${passed} of ${total} tests.` : null;
 }
 
 function getEmptyResultMessage(job) {

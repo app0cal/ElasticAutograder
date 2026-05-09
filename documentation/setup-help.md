@@ -2,6 +2,18 @@
 
 Use this guide when local setup gets stuck or stale containers/images are left behind.
 
+Start with the read-only diagnostic script:
+
+```bash
+python scripts/doctor.py
+```
+
+After the backend and at least one worker are running, validate the full grading path:
+
+```bash
+python scripts/smoke-test.py
+```
+
 ## Stop Running Compose Services
 
 ```bash

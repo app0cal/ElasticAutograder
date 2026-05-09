@@ -20,7 +20,7 @@ It combines a Spring Boot API, React frontend, Redis-backed job queue, Postgres 
 - Kubernetes Jobs for isolated grader execution and resource limits
 - Redis queueing with Postgres-backed atomic job claims
 - Distributed worker mode with scalable Docker Compose worker replicas
-- React UI for grader selection, uploads, job status, and result details
+- React UI for grader selection, uploads, job status, and structured result details
 - Reproducible burst scripts for mixed success, wrong answer, timeout, compile error, runtime error, and memory-limit scenarios
 
 ## Quick Start
@@ -31,6 +31,12 @@ Install dependencies first, then run the one-time setup:
 docker compose up -d
 docker exec -i ea-postgres psql -U postgres -d elastic_autograder < init/create_job.sql
 python scripts/setup-graders.py
+```
+
+Check the local environment:
+
+```bash
+python scripts/doctor.py
 ```
 
 Choose one run mode:
@@ -53,6 +59,12 @@ docker compose --profile full up -d --build
 ```
 
 Do not run the Compose backend and Gradle backend at the same time; both bind the backend API to port 8080.
+
+After the backend and a worker are running, verify the full grading path:
+
+```bash
+python scripts/smoke-test.py
+```
 
 ## Shutdown
 

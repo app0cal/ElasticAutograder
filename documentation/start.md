@@ -47,6 +47,18 @@ Frontend: http://localhost:5173
 
 Backend API: http://localhost:8080
 
+Check the setup without creating jobs:
+
+```bash
+python scripts/doctor.py
+```
+
+Verify one complete grading run:
+
+```bash
+python scripts/smoke-test.py
+```
+
 ## Full Containerized Stack
 
 Build/load grader images first if you have not already:
@@ -79,6 +91,13 @@ This starts PostgreSQL, Redis, one API container, and one worker container. Use 
 
 ```bash
 docker compose --profile app up -d --build --scale backend-worker=3
+```
+
+Validate the containerized backend path:
+
+```bash
+python scripts/doctor.py
+python scripts/smoke-test.py
 ```
 
 ## Optional Dev Profile

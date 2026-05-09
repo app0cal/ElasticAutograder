@@ -79,7 +79,17 @@ python scripts/setup-graders.py --parallel --build-workers 2
 
 The script uses Docker layer cache by default and builds reusable Python, Java, and C++ runtime base images as needed.
 
-## 6. Choose A Run Mode
+## 6. Check The Setup
+
+Run the read-only diagnostic script:
+
+```bash
+python scripts/doctor.py
+```
+
+It checks local tools, Docker services, kind, Kubernetes access, grader images, and backend health when the API is running.
+
+## 7. Choose A Run Mode
 
 After installation, use [Getting Started](start.md) to choose one of:
 
