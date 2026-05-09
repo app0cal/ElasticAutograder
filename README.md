@@ -8,9 +8,9 @@
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 ![GitHub issues](https://img.shields.io/github/issues/app0cal/ElasticAutograder)
 
-[Getting Started](documentation/start.md) | [Installation](documentation/installation.md) | [Testing](documentation/testing.md) | [Distributed Workers](documentation/distributed-workers.md) | [Burst Testing](documentation/burst-testing.md) | [Future Goals](documentation/futuregoals.md)
+[Getting Started](documentation/start.md) | [Installation](documentation/installation.md) | [Testing](documentation/testing.md) | [Architecture](documentation/architecture.md) | [Distributed Workers](documentation/distributed-workers.md) | [Burst Testing](documentation/burst-testing.md) | [Future Goals](documentation/futuregoals.md)
 
-Elastic Autograder is an open source grading platform for running many programming submissions through isolated, observable grader jobs.
+Elastic Autograder is an open source grading platform for running programming submissions through isolated, observable grader jobs.
 
 It combines a Spring Boot API, React frontend, Redis-backed job queue, Postgres job state, and Kubernetes grader execution. The current demo supports Python function graders plus single-file Java and C++ stdin/stdout graders through a shared manifest runtime.
 
@@ -23,13 +23,9 @@ It combines a Spring Boot API, React frontend, Redis-backed job queue, Postgres 
 - React UI for grader selection, uploads, job status, and result details
 - Reproducible burst scripts for mixed success, wrong answer, timeout, compile error, runtime error, and memory-limit scenarios
 
-## What can you do with it?
-
-Elastic Autograder is useful for building and demonstrating systems such as coursework autograders, batch evaluation pipelines, sandboxed code runners, and queue-driven worker platforms. It is designed to make job intake, worker concurrency, grader isolation, failure classification, and queue health visible during local experiments.
-
 ## Quick Start
 
-Start local infrastructure. By default, Compose starts only Postgres and Redis; the backend runs separately for fast local development.
+Install dependencies first, then run the one-time setup:
 
 ```bash
 docker compose up -d
@@ -37,45 +33,62 @@ docker exec -i ea-postgres psql -U postgres -d elastic_autograder < init/create_
 python scripts/setup-graders.py
 ```
 
-Run the backend:
+Choose one run mode:
 
-```bash
-cd backend
-./gradlew bootRun --args='--spring.profiles.active=local'
-```
+| Mode | Command | Use When |
+| --- | --- | --- |
+| Infrastructure only | `docker compose up -d` | You want Postgres and Redis for Gradle/Vite development. |
+| Local development | `cd backend && ./gradlew bootRun --args='--spring.profiles.active=local'` plus `cd frontend && npm run dev` | You are editing backend or frontend code. |
+| Backend containers | `docker compose --profile app up -d --build` | You want API/workers in Docker without the frontend container. |
+| Full stack | `docker compose --profile full up -d --build` | You want the release-style local app in one Compose profile. |
 
-Run the frontend:
+Frontend: http://localhost:5173
 
-```bash
-cd frontend
-npm install
-npm run dev
-```
+Backend API: http://localhost:8080
 
-Use `docker compose --profile app up -d --build` when you only want the backend API and worker containers without the frontend container.
+Run the following docker compose command to fully build the backend frontend and every part:
 
-
-To fully run the entire backend and frontend in one, run this command from the root directory
 ```bash
 docker compose --profile full up -d --build
 ```
 
+Do not run the Compose backend and Gradle backend at the same time; both bind the backend API to port 8080.
 
+## Shutdown
 
-Frontend: http://localhost:5173  
-Backend API: http://localhost:8080
+```bash
+# Infrastructure only
+docker compose down
+
+# Backend container profile
+docker compose --profile app down
+
+# Full stack profile
+docker compose --profile full down
+
+# Optional: remove the local kind cluster too
+kind delete cluster --name elastic-autograder
+```
+
+Avoid `docker compose down -v` unless you intentionally want to delete the local Postgres data volume.
 
 ## Documentation
 
 - [Dependencies](documentation/dependencies.md)
 - [Installation](documentation/installation.md)
 - [Getting Started](documentation/start.md)
-    - [Grader Workspace](graders/README.md)
-- [Mock Testing](documentation/testing.md)
-    - [Distributed Worker Demo](documentation/distributed-workers.md)
-    - [Burst And Failure Testing](documentation/burst-testing.md)
-- [Current Goals](documentation/goals.md)
-- [Future Goals](documentation/futuregoals.md)
+- [Grader Workspace](graders/README.md)
+- [Manifest Guide](graders/manifestGuide.md)
+- [Testing](documentation/testing.md)
+- [Architecture](documentation/architecture.md)
+    - [Distributed Workers](documentation/distributed-workers.md)
+- [Burst And Failure Testing](documentation/burst-testing.md)
+- [Docker Compose](documentation/docker.md)
+
+Additional:
+- [Setup Help](documentation/setup-help.md)
+- [Release Guide](documentation/release.md)
+- [Goals](documentation/futuregoals.md)
 
 ## Project Status
 

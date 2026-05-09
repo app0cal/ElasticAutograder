@@ -1,65 +1,111 @@
-### Local development startup
+# Getting Started
 
-Start infrastructure from the project root first:
+Use this guide after completing [Installation](installation.md).
+
+## Run Mode Summary
+
+| Mode | Command | Use When |
+| --- | --- | --- |
+| Infrastructure only | `docker compose up -d` | You are running backend/frontend locally with Gradle and Vite. |
+| Local development | `./gradlew bootRun --args='--spring.profiles.active=local'` and `npm run dev` | You are editing project code. |
+| Backend containers | `docker compose --profile app up -d --build` | You want API/workers in Docker. |
+| Full stack | `docker compose --profile full up -d --build` | You want a release-style local run with backend and frontend containers. |
+
+Do not run the Compose backend and Gradle backend at the same time; both bind the backend API to port 8080.
+
+## Local Development
+
+Terminal 1, from the project root:
 
 ```bash
 docker compose up -d
 ```
 
-By default, Compose starts only Postgres and Redis. The backend commands below start the API on port 8080 for local development.
-
-Do not run the Compose backend and Gradle backend at the same time; both bind the backend API to port 8080.
-
-For a full containerized local stack, build grader images first and then start the `full` profile:
+Terminal 2, backend:
 
 ```bash
-python scripts/setup-graders.py
-docker compose --profile full up -d --build
+cd backend
+./gradlew bootRun --args='--spring.profiles.active=local'
 ```
 
-The frontend container proxies `/api` to the backend container. If port 5173 is already in use, set `FRONTEND_PORT=5174` when starting the full profile.
+On Windows Command Prompt:
 
-Use this full profile for release-style local runs. Use the terminal split below when actively editing backend or frontend code.
+```bat
+cd backend
+gradlew bootRun --args="--spring.profiles.active=local"
+```
 
-### The next steps require at least two open terminals.
+Terminal 3, frontend:
 
-**Terminal 1 — Frontend**
 ```bash
 cd frontend
 npm install
 npm run dev
 ```
 
-**Terminal 2 — Backend (Windows Command Prompt / cmd, fast local restarts)**
-```bat
-cd backend
-gradlew bootRun --args="--spring.profiles.active=local"
-```
+Frontend: http://localhost:5173
 
-**Terminal 2 — Backend (PowerShell or Linux/macOS shell, fast local restarts)**
+Backend API: http://localhost:8080
+
+## Full Containerized Stack
+
+Build/load grader images first if you have not already:
+
 ```bash
-cd backend
-./gradlew bootRun --args='--spring.profiles.active=local'
+python scripts/setup-graders.py
 ```
 
-**Optional: Backend with automatic grader setup on startup**
-Use the `dev` profile when you want the backend to rebuild and load grader images automatically on startup. The frontend can still open while this is running, but job upload/run requests return a temporary `503` until grader setup is ready.
+Then start the full profile:
+
+```bash
+docker compose --profile full up -d --build
+```
+
+The frontend container serves the built React app and proxies `/api` to the backend.
+
+If port 5173 is already in use:
+
+```bash
+FRONTEND_PORT=5174 docker compose --profile full up -d --build
+```
+
+## Backend Containers Only
+
+```bash
+docker compose --profile app up -d --build
+```
+
+This starts PostgreSQL, Redis, one API container, and one worker container. Use scaling for the distributed worker demo:
+
+```bash
+docker compose --profile app up -d --build --scale backend-worker=3
+```
+
+## Optional Dev Profile
+
+Use `dev` when you want backend startup to run grader setup automatically:
 
 ```bash
 cd backend
 ./gradlew bootRun --args='--spring.profiles.active=dev'
 ```
 
-If you are using the `local` profile and want a one-off rebuild on startup, override the property directly:
+The frontend can open while setup is still running, but upload/run requests return a temporary service-unavailable response until setup finishes.
+
+## Shutdown
 
 ```bash
-cd backend
-./gradlew bootRun --args='--spring.profiles.active=local --graders.setup-on-startup=true'
+# Infrastructure only
+docker compose down
+
+# Backend app profile
+docker compose --profile app down
+
+# Full stack profile
+docker compose --profile full down
+
+# Optional: delete local kind cluster
+kind delete cluster --name elastic-autograder
 ```
 
-#### Open the local development site
-
-Frontend: http://localhost:5173  
-Backend API: http://localhost:8080
-
-If the frontend URL is different, check the Vite terminal output.
+Use `docker compose down -v` only when you intentionally want to delete the local Postgres volume.

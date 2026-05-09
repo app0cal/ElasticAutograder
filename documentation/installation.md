@@ -1,40 +1,90 @@
-### Running the project locally
+# Installation
 
-#### Git clone the main branch repository
+This guide covers first-time setup. For daily startup commands, use [Getting Started](start.md).
+
+## 1. Get The Project
+
+Clone from source:
+
 ```bash
 git clone https://github.com/app0cal/ElasticAutograder.git
+cd ElasticAutograder
 ```
 
-#### The next steps are easiest with at least two open terminals.
+Or download and unpack a release archive from GitHub when one is available.
 
-#### Create the kind cluster for the k8s side
-Depends on operating system,
-(IMPORTANT: This assumes you have no existing cluster or images pre-built, if you do delete them before running scripts)
+## 2. Install Dependencies
 
-If on windows, open up a command prompt terminal and run the following
-```bash
-scripts\setup-k8s.bat
-```
+Install the required tools listed in [Dependencies](dependencies.md):
 
-If on linux/unix based operating systems run the following
-```bash
-python3 scripts/setup-graders.py
-```
-If you run into any issues refer to the documentation folder/setup-help.md for manually deleting.
+- Docker / Docker Compose
+- Java 21
+- Python 3
+- Node.js and npm
+- kind
+- kubectl
 
+## 3. Start Local Infrastructure
 
-#### Run Docker Compose to start local infrastructure.
-
-By default, Compose starts only PostgreSQL and Redis. Start the backend separately with Gradle for local development, use the Compose `app` profile for containerized API/workers, or use the `full` profile for the full browser app stack. Do not run multiple backend modes at the same time because they bind port 8080.
-
-If the Vite dev server is already using port 5173, run the full profile with `FRONTEND_PORT=5174`.
+From the project root:
 
 ```bash
 docker compose up -d
+```
+
+Plain `docker compose up -d` starts only PostgreSQL and Redis. It does not start the backend, frontend, or Kubernetes grader pods.
+
+## 4. Initialize The Database
+
+For a fresh local database:
+
+```bash
 docker exec -i ea-postgres psql -U postgres -d elastic_autograder < init/create_job.sql
 ```
 
-#### Optional: Add mock data to database
+Optional sample rows:
+
 ```bash
 docker exec -i ea-postgres psql -U postgres -d elastic_autograder < init/seed_job.sql
 ```
+
+Avoid `docker compose down -v` unless you intentionally want to delete the local database volume.
+
+## 5. Create kind And Build Grader Images
+
+The setup script creates the kind cluster if needed, builds grader images, and loads those images into kind:
+
+```bash
+python scripts/setup-graders.py
+```
+
+On platforms where Python is named `python3`:
+
+```bash
+python3 scripts/setup-graders.py
+```
+
+Useful options:
+
+```bash
+# Build/load only one grader
+python scripts/setup-graders.py --grader fib-java
+
+# Clean Docker rebuild
+python scripts/setup-graders.py --no-cache
+
+# Opt into parallel grader image builds
+python scripts/setup-graders.py --parallel --build-workers 2
+```
+
+The script uses Docker layer cache by default and builds reusable Python, Java, and C++ runtime base images as needed.
+
+## 6. Choose A Run Mode
+
+After installation, use [Getting Started](start.md) to choose one of:
+
+- Gradle backend + Vite frontend for local development
+- Compose `app` profile for backend API/workers in containers
+- Compose `full` profile for the full local app stack
+
+Do not run multiple backend modes at the same time because they bind port 8080.

@@ -1,140 +1,91 @@
-## Docker Compose Local Setup
+# Docker Compose
 
-We use `docker-compose.yaml` to create containers for the local workflow.
+Docker Compose is used for local infrastructure and optional containerized app runs.
 
-Reminder(this part is more for the readme after when we're done and for future users):
-- **PostgreSQL** (database for jobs/results metadata)
-- **Redis** (queue for job messages)
-- Optional backend API and worker containers through the `app` profile
-- Optional full app stack, including the frontend, through the `full` profile
+## Profiles
 
-> **Important:** plain `docker compose up -d` starts only local infrastructure. It does **not** create/manage the Kubernetes cluster (`kind`) and it does **not** run grading pods.
->
-> Do not run the Compose backend and Gradle backend at the same time; both bind the backend API to port 8080.
+| Command | Starts |
+| --- | --- |
+| `docker compose up -d` | PostgreSQL and Redis |
+| `docker compose --profile app up -d --build` | PostgreSQL, Redis, backend API, backend worker |
+| `docker compose --profile full up -d --build` | PostgreSQL, Redis, backend API, backend worker, frontend |
 
----
+Plain `docker compose up -d` does not create the kind cluster and does not run grader pods. Grader pods run in kind after `scripts/setup-graders.py` has built and loaded grader images.
 
-### What `docker-compose.yml` does for us
-Rather than everyone manually typing commands to create containers the docker-compose file lets us have a shared setup w the settings below: 
+## Shutdown
 
-- container names
-- ports (important for connecting database and redis to backend)
-- environment variables
-- volumes (persistent database storage, (this is how postgreSQL keeps the db even after we turn it off temporarily))
+Profiles matter when stopping services.
 
-This keeps everyone’s local environment consistent.
-
-A lot of the following might seem redundant below but I highly encourage you guys to read over it because in some scenarios stopping with the wrong command can delete database volume which basically wipes out the db from your local machine.
-
-## Common use cases (read this after reading the tutorial below please)
-A lot of the commands are the exact same as the ones below but please at least understand why to use each one before you copy paste bc some commands wipe out db which I cant stress enough.
-### Start infrastructure again
 ```bash
-docker compose up -d
+# Stop default infrastructure services
+docker compose down
+
+# Stop backend API/worker profile services too
+docker compose --profile app down
+
+# Stop full stack profile services too
+docker compose --profile full down
 ```
 
-### Start backend API and workers
+If you start the full profile and then run plain `docker compose down`, profiled containers may remain running. Use the matching profile in the `down` command.
+
+Delete database data only when you intentionally want a reset:
+
 ```bash
-docker compose --profile app up -d --build
+docker compose --profile full down -v
 ```
 
-### Start the full Compose app stack
+## Status And Logs
+
 ```bash
-docker compose --profile full up -d --build
+docker compose ps
+docker compose --profile full ps
+docker compose logs -f postgres redis
+docker compose --profile app logs -f backend-api backend-worker
+docker compose --profile full logs -f frontend
 ```
 
-If port 5173 is already in use:
+## Port Conflicts
+
+Default ports:
+
+- Frontend: `5173`
+- Backend API: `8080`
+- Postgres: `5432`
+- Redis: `6379`
+
+If the Vite dev server is already using port 5173, start the full profile with a different frontend port:
 
 ```bash
 FRONTEND_PORT=5174 docker compose --profile full up -d --build
 ```
 
-### Check status
-```bash
-docker compose ps
-```
+Do not run the Gradle backend and Compose backend at the same time because both bind port 8080.
 
-### Stop temporarily (keeps all containers)
-```bash
-docker compose stop
-```
+## Restart Patterns
 
-### Restart stopped containers
-```bash
-docker compose start
-```
-
-### Recreate containers (keeps named volumes)
-```bash
-docker compose down
-docker compose up -d
-```
-
-### Full reset (deletes all)
-```bash
-docker compose down -v
-docker compose up -d
-```
-
-## 1) Start local services (create if needed)
-Run this from the project root (where `docker-compose.yaml` is located):
+Restart infrastructure:
 
 ```bash
-docker compose up -d
+docker compose restart postgres redis
 ```
 
-This starts Postgres and Redis only. Use Gradle `bootRun` for local backend development.
-
-To start the backend API and one worker in Compose instead:
+Rebuild backend containers after code changes:
 
 ```bash
 docker compose --profile app up -d --build
 ```
 
-To start Postgres, Redis, backend API, one worker, and the frontend container:
+Rebuild the full stack:
 
 ```bash
 docker compose --profile full up -d --build
 ```
 
-The frontend container serves the built React app and proxies `/api` to the backend. If port 5173 is occupied by the Vite dev server, use `FRONTEND_PORT=5174`.
+## kind Is Separate
 
-## 2) Check it's running 
+The kind cluster is not owned by Docker Compose. To remove it:
+
 ```bash
-docker compose ps
+kind delete cluster --name elastic-autograder
 ```
-
-## 3) Check logs
-```bash
-docker compose ps
-```
-
-## 4) Stop temporarily (keeps containers)
-```bash
-docker compose stop
-```
-
-## 5) Start after stopping
-```bash
-docker compose start
-```
-
-## 6) Recreate Containers (this keeps the DB data)
-```bash
-docker compose down
-docker compose up -d
-```
-
-## 7) Resets everything (including Postgres/volume data) 
-Be very careful when you use this, save this as a last resort.
-```bash
-docker compose down -v
-docker compose up -d
-```
-the -v removes volume specifically
-
-## 8) Bugs you might run into (we can index personal bugs we find here)
-
-1. container name already in use, this usually happens if you manually created a container already with the same name so just delete it with docker desktop OR use command line interface. 
-
-2. ports already in use, remove the conflicting container OR change port mapping. HOWEVER, if you do this make sure you note it down or remember bc this can be an easy bug to overlook

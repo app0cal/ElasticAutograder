@@ -20,7 +20,7 @@ Spring configuration classes. These load grader configuration, configure JSON ha
 
 `src/main/java/com/autograder/controller`
 
-REST controllers. `JobController` handles uploads, job execution, job history, job details, result download, and upload cleanup.
+REST controllers. Upload, execution, query, grader catalog, and system-health endpoints are split across focused controller classes.
 
 `src/main/java/com/autograder/dto`
 
@@ -44,7 +44,7 @@ Spring application configuration. The `local`, `dev`, and `prod` profiles define
 
 `src/test/java/com/autograder`
 
-Automated tests. Unit tests cover controller, repository, configuration, and service behavior. The integration/system test exercises the Python grader runtime pipeline.
+Automated tests. Unit tests cover controller, repository, configuration, and service behavior. The integration/system test exercises the grader runtime pipeline.
 
 `grading`
 
@@ -54,12 +54,13 @@ Temporary uploaded submissions used while jobs are running. Public grader manife
 
 1. The frontend uploads a submission and selected grader key to `POST /api/jobs/upload`.
 2. The backend validates the grader key through `GraderRegistry`.
-3. The backend writes the upload under `grading/uploads` and creates a queued `Job` row.
+3. The backend stores submission content and creates a queued `Job` row.
 4. The frontend starts grading through `POST /api/jobs/run/{id}`.
-5. `Fabric8GradingOrchestrator` creates a Kubernetes ConfigMap from the submission.
-6. The orchestrator creates a Kubernetes Job using the selected grader image and manifest.
-7. The backend waits for completion, reads grader logs, parses JSON output, and updates the `Job`.
-8. The frontend reads job history, details, and downloadable results from the backend API.
+5. The backend publishes work to Redis.
+6. A worker claims the queued job in Postgres.
+7. `Fabric8GradingOrchestrator` creates a Kubernetes ConfigMap and Job.
+8. The worker reads grader logs, parses JSON output, stores results, and marks the job terminal.
+9. The frontend reads job history, details, and downloadable results from the backend API.
 
 ## Backend Profiles
 
@@ -76,6 +77,8 @@ Use `dev` when you want the backend to rebuild/load grader images during startup
 ```
 
 Use `prod` only when environment variables such as `DB_URL` are configured for a deployed environment.
+
+Do not run a Gradle backend and a Compose backend at the same time because both bind port 8080.
 
 ## Tests And Coverage
 

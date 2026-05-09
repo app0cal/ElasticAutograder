@@ -1,6 +1,6 @@
-# Distributed Worker Demo
+# Distributed Workers
 
-Future Goal 1 is demonstrated with Docker Compose worker replicas:
+Elastic Autograder can run the API and worker processes as separate Docker Compose services:
 
 - `backend-api` accepts uploads and writes durable queued jobs to Postgres.
 - `backend-api` publishes Redis queue messages.

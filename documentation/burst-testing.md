@@ -1,6 +1,6 @@
 # Burst And Failure Testing
 
-This project includes a local burst/failure script for exercising the Redis queue, worker pool, Kubernetes grader jobs, and Goal 9 queue-health endpoint.
+This project includes a local burst/failure script for exercising the Redis queue, worker pool, Kubernetes grader jobs, and queue-health endpoint.
 
 The script is a local reproducibility tool, not a production benchmark and not a CI gate. It submits normal jobs through public APIs and does not reset Postgres, purge Redis, or delete Kubernetes resources.
 

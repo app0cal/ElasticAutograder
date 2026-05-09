@@ -1,29 +1,71 @@
-What is the purpose of a manifest?
+# Manifest Guide
 
-Three core parts (in the current implementation)
+Grader manifests define the assignment tests and the runtime adapter used to execute a submission. The backend selects a grader from `config/graders.json`; the grader image contains the matching `graders/<grader-key>/manifest.json`.
 
-entry_function: name or identifier for a specific grading function
+## Supported Manifest Styles
 
-comparisons: 
-- exact : when a list is returned this MUST follow the exact order as answer key
-- unordered_exact : can be returned in any order for the answer key
+Elastic Autograder currently supports:
 
-tests_cases: a list of the actual test cases with arguments being passed in (currently doesn't support certian problems like trees )
+- legacy Python function manifests
+- v2 Python `function_cases`
+- v2 command-based `stdio_cases` for single-file Java and C++ submissions
 
-## Manifest v2 direction
+`project_cases` is reserved for future project/zip-style submissions and is not implemented yet.
 
-`manifestVersion: 2` separates the shared assignment tests from language-specific runtime adapters. The runtime supports Python `function_cases` and single-file command-based `stdio_cases`.
+## Legacy Python Manifest
+
+Legacy manifests are still supported for existing Python function graders.
+
+```json
+{
+  "entry_function": "fib",
+  "comparison": { "mode": "exact" },
+  "test_cases": [
+    { "name": "case_0", "args": [0], "expected": 0 }
+  ]
+}
+```
+
+The submitted Python file must define the configured function.
+
+## Manifest v2
+
+Manifest v2 separates shared test cases from language-specific adapters.
 
 Top-level fields:
 
-- `manifestVersion`: must be `2`
-- `assignmentKey`: shared assignment identifier such as `fib`
-- `problemType`: one of `function_cases`, `stdio_cases`, or `project_cases`
+- `manifestVersion`: use `2`
+- `assignmentKey`: shared assignment identifier, such as `fib`
+- `problemType`: `function_cases` or `stdio_cases`
 - `comparison.mode`: currently `exact` or `unordered_exact`
-- `cases`: shared test cases
-- `languages`: map of supported language adapters
+- `cases`: test cases
+- `languages`: map of language adapters
 
-Example stdio adapter:
+## v2 Python Function Cases
+
+```json
+{
+  "manifestVersion": 2,
+  "assignmentKey": "fib",
+  "problemType": "function_cases",
+  "comparison": { "mode": "exact" },
+  "cases": [
+    { "name": "case_0", "args": [0], "expected": 0 }
+  ],
+  "languages": {
+    "python": {
+      "adapter": {
+        "mode": "function",
+        "entryFunction": "fib"
+      }
+    }
+  }
+}
+```
+
+## v2 Stdin/Stdout Cases
+
+Use `stdio_cases` for single-file command-based submissions.
 
 ```json
 {
@@ -53,6 +95,38 @@ Example stdio adapter:
 }
 ```
 
-The selected language defaults to `python` and can be overridden with `GRADER_LANGUAGE`.
+For `stdio_cases`:
 
-For `stdio_cases`, `runCommand` is required and `compileCommand` is optional. When `submission.fileName` is present, the mounted submission is copied to that file name before compile/run commands execute.
+- `runCommand` is required.
+- `compileCommand` is optional.
+- `submission.fileName` is optional but recommended for compiled single-file languages.
+- stdout comparison is exact for the current runtime.
+- stderr is captured for failed compile/run results.
+
+## Language Selection
+
+The selected language defaults to `python`. The backend sets `GRADER_LANGUAGE` from the grader definition when `language` is configured in `config/graders.json`.
+
+Example:
+
+```json
+{
+  "key": "fib-java",
+  "language": "java",
+  "graderFolder": "fib-java",
+  "imageName": "ea-grader-fib-java:v1",
+  "manifestPath": "/app/grader/manifest.json"
+}
+```
+
+## Add A New Grader
+
+1. Create `graders/<grader-key>/manifest.json`.
+2. Add a matching entry to `config/graders.json`.
+3. Build and load the image:
+
+```bash
+python scripts/setup-graders.py --grader <grader-key>
+```
+
+4. Restart the backend if it is already running so the grader catalog is reloaded.
