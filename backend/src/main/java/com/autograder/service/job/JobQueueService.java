@@ -51,6 +51,7 @@ public class JobQueueService {
                 job.getId(),
                 job.getQueueMessageId(),
                 job.getSubmissionPath(),
+                job.getSubmissionKind().name(),
                 job.getGraderType(),
                 job.getInstitutionId(),
                 job.getSubmittedBy(),

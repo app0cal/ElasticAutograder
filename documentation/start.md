@@ -59,6 +59,13 @@ Verify one complete grading run:
 python scripts/smoke-test.py
 ```
 
+Verify the project grader after loading it:
+
+```bash
+python scripts/setup-graders.py --grader fib-java-project
+python scripts/smoke-test.py --scenario project-java-pass
+```
+
 ## Full Containerized Stack
 
 Build/load grader images first if you have not already:

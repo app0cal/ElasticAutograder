@@ -32,6 +32,7 @@ class GraderDefinitionTest {
         assertEquals("fib", grader.getKey());
         assertEquals("Fibonacci", grader.getLabel());
         assertEquals("ea-grader-fibbonaci:v1", grader.getImageName());
+        assertEquals("batch_zip", grader.getUploadMode());
         assertEquals("/app/grader/manifest.json", grader.getManifestPath());
         assertEquals("Dynamic programming warm-up.", grader.getSummary());
         assertEquals(List.of("Return the nth Fibonacci number."), grader.getDetails());
@@ -53,6 +54,7 @@ class GraderDefinitionTest {
         assertEquals("twosum", grader.getKey());
         assertEquals("Two Sum", grader.getLabel());
         assertEquals("ea-grader-twosum:v1", grader.getImageName());
+        assertEquals("batch_zip", grader.getUploadMode());
         assertEquals("/manifest.json", grader.getManifestPath());
         assertNull(grader.getSummary());
         assertNull(grader.getDetails());

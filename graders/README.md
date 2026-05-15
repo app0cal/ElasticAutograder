@@ -14,7 +14,14 @@ Assignment-specific grader manifest. The folder name should match `graderFolder`
 
 `manifestGuide.md`
 
-Manifest format reference for Python function graders and Java/C++ stdin/stdout graders.
+Manifest format reference for Python function graders, Java/C++ stdin/stdout graders, and project zip graders.
+
+## Included Samples
+
+- `fib`: legacy Python function grader.
+- `fib-java`: single-file Java `stdio_cases` grader.
+- `fib-cpp`: single-file C++ `stdio_cases` grader.
+- `fib-java-project`: multi-file Java `project_cases` grader for project zip submissions.
 
 ## Add A Grader
 

@@ -26,6 +26,7 @@ public class GraderCatalogService {
                         grader.getKey(),
                         grader.getLabel(),
                         grader.getLanguage(),
+                        grader.getUploadMode(),
                         grader.getSummary(),
                         grader.getDetails()
                 ))

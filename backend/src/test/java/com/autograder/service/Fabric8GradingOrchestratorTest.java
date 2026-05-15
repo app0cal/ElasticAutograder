@@ -12,6 +12,9 @@ import java.util.List;
 
 import com.autograder.model.FailureReason;
 import com.autograder.model.GraderDefinition;
+import com.autograder.model.SubmissionKind;
+import com.autograder.service.submission.StoredProject;
+import com.autograder.service.submission.StoredProjectFile;
 
 class Fabric8GradingOrchestratorTest {
 
@@ -150,6 +153,26 @@ class Fabric8GradingOrchestratorTest {
         assertEquals("def fib(n): return n", configMap.getData().get("submission.py"));
     }
 
+    @Test
+    void buildProjectSubmissionConfigMap_usesSafeKeysAndPreservesFileContents() {
+        var configMap = orchestrator.buildProjectSubmissionConfigMap(
+                57L,
+                project(),
+                "fib-project",
+                "university-a"
+        );
+
+        assertEquals("submission-job-57", configMap.getMetadata().getName());
+        assertEquals("elastic-autograder", configMap.getMetadata().getLabels().get("app"));
+        assertEquals("grader", configMap.getMetadata().getLabels().get("component"));
+        assertEquals("57", configMap.getMetadata().getLabels().get("job-id"));
+        assertEquals("university-a", configMap.getMetadata().getLabels().get("institution-id"));
+        assertEquals("fib-project", configMap.getMetadata().getLabels().get("grader-type"));
+        assertEquals("class Main {}", configMap.getData().get("project-file-0"));
+        assertEquals("class Fib {}", configMap.getData().get("project-file-1"));
+        assertFalse(configMap.getData().containsKey("src/Main.java"));
+    }
+
     /**
      * Verifies the pure Kubernetes Job builder for grader execution.
      * Expected behavior: the generated job includes image, command, args, resources, volume, and timeout settings.
@@ -191,6 +214,34 @@ class Fabric8GradingOrchestratorTest {
         assertEquals("Mi", container.getResources().getLimits().get("memory").getFormat());
         assertEquals("/work", container.getVolumeMounts().get(0).getMountPath());
         assertTrue(container.getEnv() == null || container.getEnv().isEmpty());
+    }
+
+    @Test
+    void buildProjectGradingJob_mapsProjectFilesUnderWorkProject() {
+        GraderDefinition grader = createGrader();
+        grader.setKey("fib-project");
+        grader.setLanguage("java");
+
+        var job = orchestrator.buildProjectGradingJob(58L, grader, "university-a", project());
+
+        var podSpec = job.getSpec().getTemplate().getSpec();
+        var container = podSpec.getContainers().get(0);
+        assertEquals(List.of("python", "/app/main.py"), container.getCommand());
+        assertEquals(List.of("/work/project", "/app/grader/manifest.json"), container.getArgs());
+        assertEquals("/work", container.getVolumeMounts().get(0).getMountPath());
+
+        var configMap = podSpec.getVolumes().get(0).getConfigMap();
+        assertEquals("submission-job-58", configMap.getName());
+        assertEquals(2, configMap.getItems().size());
+        assertEquals("project-file-0", configMap.getItems().get(0).getKey());
+        assertEquals("project/src/Main.java", configMap.getItems().get(0).getPath());
+        assertEquals("project-file-1", configMap.getItems().get(1).getKey());
+        assertEquals("project/src/Fib.java", configMap.getItems().get(1).getPath());
+
+        assertNotNull(container.getEnv());
+        assertTrue(container.getEnv().stream().anyMatch(envVar ->
+                "GRADER_LANGUAGE".equals(envVar.getName()) && "java".equals(envVar.getValue())
+        ));
     }
 
     @Test
@@ -312,6 +363,17 @@ class Fabric8GradingOrchestratorTest {
         grader.setMemoryRequestMb(128);
         grader.setMemoryLimitMb(512);
         return grader;
+    }
+
+    private StoredProject project() {
+        return new StoredProject(
+                "project:2ee63863-c9ec-4a1f-8ce9-d4db05cc7a5c",
+                "project.zip",
+                List.of(
+                        new StoredProjectFile("src/Main.java", "class Main {}", "text/plain", 13L),
+                        new StoredProjectFile("src/Fib.java", "class Fib {}", "text/plain", 12L)
+                )
+        );
     }
 
     private static class TestableFabric8GradingOrchestrator extends Fabric8GradingOrchestrator {

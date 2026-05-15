@@ -8,6 +8,7 @@ public class GraderDefinition {
     private String label; // human readable label for the grader, e.g. "Fibonacci" or "Two Sum"
     private String imageName; // the name of the docker image for this grader, e.g. "ea-grader-fibbonaci:v1" or "ea-grader-twosum:v1"
     private String language; // optional language selector passed to v2 multi-language grader manifests
+    private String uploadMode; // controls whether the grader accepts a source file, batch zip, or project zip
     private String graderFolder; // folder under the root graders directory; defaults to key
     private String manifestPath; // the path to the manifest file for this grader, e.g. "/app/grader/manifest.json"
     private String summary; // short overview shown in the submit page
@@ -48,6 +49,7 @@ public class GraderDefinition {
         this.key = key;
         this.label = label;
         this.imageName = imageName;
+        this.uploadMode = "batch_zip";
         this.graderFolder = key;
         this.manifestPath = manifestPath;
         this.summary = summary;
@@ -105,6 +107,14 @@ public class GraderDefinition {
 
     public void setLanguage(String language) {
         this.language = language;
+    }
+
+    public String getUploadMode() {
+        return uploadMode;
+    }
+
+    public void setUploadMode(String uploadMode) {
+        this.uploadMode = uploadMode;
     }
 
     public String getGraderFolder() {

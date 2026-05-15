@@ -3,6 +3,7 @@ import json
 import os
 import random
 import shutil
+import stat
 import subprocess
 import sys
 import tempfile
@@ -331,7 +332,7 @@ def validate_v2_manifest(manifest: Dict[str, Any]) -> RuntimeManifest:
                 validate_v2_adapter(selected_language, problem_type, adapter, errors)
                 if adapter_mode == "function":
                     entry_function = adapter.get("entryFunction")
-                if adapter_mode == "stdio":
+                if adapter_mode in {"stdio", "project"}:
                     compile_command = adapter.get("compileCommand")
                     run_command = adapter.get("runCommand")
 
@@ -362,6 +363,7 @@ def validate_v2_manifest(manifest: Dict[str, Any]) -> RuntimeManifest:
         executable=(
             (problem_type == "function_cases" and selected_language == "python" and adapter_mode == "function")
             or (problem_type == "stdio_cases" and adapter_mode == "stdio")
+            or (problem_type == "project_cases" and adapter_mode == "project")
         ),
     )
 
@@ -447,7 +449,9 @@ def validate_v2_cases(problem_type: Any, cases: List[Any], errors: List[str]) ->
 
         case_input = case.get("input")
         expected = case.get("expected")
-        if not isinstance(case_input, dict):
+        if case_input is None and problem_type == "project_cases":
+            case_input = {}
+        elif not isinstance(case_input, dict):
             errors.append(f"cases[{i}] is missing valid 'input'")
             case_input = {}
         if not isinstance(expected, dict):
@@ -465,8 +469,10 @@ def validate_v2_cases(problem_type: Any, cases: List[Any], errors: List[str]) ->
             if "stdout" not in expected or not isinstance(expected.get("stdout"), str):
                 errors.append(f"cases[{i}].expected is missing valid 'stdout'")
         elif problem_type == "project_cases":
-            if not expected:
-                errors.append(f"cases[{i}].expected must define at least one project assertion")
+            if case_input and "stdin" in case_input and not isinstance(case_input.get("stdin"), str):
+                errors.append(f"cases[{i}].input.stdin must be a string when present")
+            if "stdout" not in expected or not isinstance(expected.get("stdout"), str):
+                errors.append(f"cases[{i}].expected is missing valid 'stdout'")
 
 
 def normalize_v2_cases(problem_type: str, cases: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
@@ -612,6 +618,98 @@ def run_stdio_cases(submission_path: str, runtime_manifest: RuntimeManifest) -> 
     emit_final_results(tests_passed, tests_total, results)
 
 
+def run_project_cases(project_path: str, runtime_manifest: RuntimeManifest) -> None:
+    if runtime_manifest.run_command is None:
+        fail_validation("project runtime is missing runCommand", exit_code=1)
+
+    if not os.path.isdir(project_path):
+        fail_validation(f"Project directory not found: {project_path}", exit_code=1)
+
+    results: List[Dict[str, Any]] = []
+    tests_passed = 0
+    tests_total = len(runtime_manifest.test_cases)
+
+    with tempfile.TemporaryDirectory() as work_root:
+        work_project_path = os.path.join(work_root, "project")
+        shutil.copytree(project_path, work_project_path)
+        make_tree_user_writable(work_project_path)
+
+        if runtime_manifest.compile_command is not None:
+            try:
+                compile_result = run_command(runtime_manifest.compile_command, work_project_path)
+            except subprocess.TimeoutExpired:
+                emit_stdio_build_failure(
+                    f"compileCommand timed out after {command_timeout_seconds()} seconds",
+                    tests_total,
+                )
+
+            if compile_result.returncode != 0:
+                emit_stdio_build_failure(
+                    build_stdio_failure_message("compileCommand", compile_result),
+                    tests_total,
+                )
+
+        results.append(make_result("validation", "build_check", True, "submission build completed"))
+
+        for case in runtime_manifest.test_cases:
+            case_name = case["name"]
+            expected_stdout = case["expected"]["stdout"]
+            stdin = case.get("input", {}).get("stdin", "")
+
+            try:
+                run_result = run_command(runtime_manifest.run_command, work_project_path, stdin)
+            except subprocess.TimeoutExpired:
+                results.append(
+                    make_result(
+                        "test",
+                        case_name,
+                        False,
+                        f"runCommand timed out after {command_timeout_seconds()} seconds"
+                    )
+                )
+                continue
+
+            if run_result.returncode != 0:
+                results.append(
+                    make_result(
+                        "test",
+                        case_name,
+                        False,
+                        build_stdio_failure_message("runCommand", run_result)
+                    )
+                )
+                continue
+
+            passed = run_result.stdout == expected_stdout
+            if passed:
+                tests_passed += 1
+
+            results.append(
+                make_result(
+                    "test",
+                    case_name,
+                    passed,
+                    f"Expected stdout {summarize_stream(expected_stdout)}, got {summarize_stream(run_result.stdout)}"
+                )
+            )
+
+    emit_final_results(tests_passed, tests_total, results)
+
+
+def make_tree_user_writable(root_path: str) -> None:
+    for current_root, directories, files in os.walk(root_path):
+        current_mode = os.stat(current_root).st_mode
+        os.chmod(current_root, current_mode | stat.S_IWUSR | stat.S_IXUSR)
+        for directory in directories:
+            directory_path = os.path.join(current_root, directory)
+            directory_mode = os.stat(directory_path).st_mode
+            os.chmod(directory_path, directory_mode | stat.S_IWUSR | stat.S_IXUSR)
+        for file_name in files:
+            file_path = os.path.join(current_root, file_name)
+            file_mode = os.stat(file_path).st_mode
+            os.chmod(file_path, file_mode | stat.S_IWUSR)
+
+
 def run_function_cases(submission_path: str, runtime_manifest: RuntimeManifest) -> None:
     entry_function = runtime_manifest.entry_function
     comparison_mode = runtime_manifest.comparison_mode
@@ -755,6 +853,9 @@ def main():
 
     if runtime_manifest.adapter_mode == "stdio":
         run_stdio_cases(submission_path, runtime_manifest)
+
+    if runtime_manifest.adapter_mode == "project":
+        run_project_cases(submission_path, runtime_manifest)
 
     run_function_cases(submission_path, runtime_manifest)
 

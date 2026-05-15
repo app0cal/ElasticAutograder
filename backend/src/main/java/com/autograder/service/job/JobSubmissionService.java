@@ -11,10 +11,12 @@ import org.springframework.web.multipart.MultipartFile;
 import com.autograder.model.GraderDefinition;
 import com.autograder.model.Job;
 import com.autograder.model.JobStatus;
+import com.autograder.model.SubmissionKind;
 import com.autograder.repository.JobRepository;
 import com.autograder.service.GraderRegistry;
 import com.autograder.service.LocalGraderSetupStatus;
 import com.autograder.service.identity.RequestIdentity;
+import com.autograder.service.submission.StoredProjectSubmission;
 import com.autograder.service.submission.StoredSubmission;
 import com.autograder.service.submission.SubmissionStorageService;
 
@@ -65,6 +67,10 @@ public class JobSubmissionService {
         GraderDefinition grader = graderRegistry.getRequired(identity.institution(), cleanedGraderType);
         validateSingleUploadExtension(file, grader);
 
+        if ("project_zip".equals(uploadMode(grader))) {
+            return uploadProjectZip(file, cleanedGraderType, grader, identity);
+        }
+
         List<StoredSubmission> submissions = List.of();
 
         List<Job> createdJobs = new ArrayList<>();
@@ -76,7 +82,13 @@ public class JobSubmissionService {
 
             List<UploadedJobSummary> uploadedJobs = new ArrayList<>();
             for (StoredSubmission submission : submissions) {
-                Job job = createQueuedJob(submission, cleanedGraderType, grader, identity);
+                Job job = createQueuedJob(
+                        submission,
+                        cleanedGraderType,
+                        grader,
+                        identity,
+                        submissionKindForStoredFile(file)
+                );
                 createdJobs.add(job);
                 uploadedJobs.add(new UploadedJobSummary(job.getId(), job.getOriginalFilename()));
             }
@@ -96,14 +108,60 @@ public class JobSubmissionService {
         }
     }
 
+    private UploadJobResponse uploadProjectZip(
+            MultipartFile file,
+            String graderType,
+            GraderDefinition grader,
+            RequestIdentity identity
+    ) throws IOException {
+        StoredProjectSubmission projectSubmission = null;
+        Job createdJob = null;
+
+        try {
+            projectSubmission = submissionStorageService.storeProjectZip(file, identity);
+            createdJob = createQueuedProjectJob(projectSubmission, graderType, grader, identity);
+            jobExecutionService.enqueueJob(createdJob.getId(), identity);
+            return new UploadJobResponse(
+                    "Successfully queued project.",
+                    List.of(new UploadedJobSummary(createdJob.getId(), createdJob.getOriginalFilename()))
+            );
+        } catch (RuntimeException e) {
+            if (createdJob != null) {
+                cleanupCreatedJobs(List.of(createdJob));
+            }
+            if (projectSubmission != null) {
+                cleanupStoredProject(projectSubmission);
+            }
+            throw e;
+        }
+    }
+
     private Job createQueuedJob(
             StoredSubmission submission,
+            String graderType,
+            GraderDefinition grader,
+            RequestIdentity identity,
+            SubmissionKind submissionKind
+    ) {
+        Job job = new Job(submission.originalFileName(), graderType, OffsetDateTime.now(), JobStatus.QUEUED);
+        job.setSubmissionId(submission.submissionId());
+        job.setSubmissionKind(submissionKind);
+        job.setSubmissionPath(submission.key());
+        job.setGraderImage(grader.getImageName());
+        job.setInstitutionId(identity.institution());
+        job.setSubmittedBy(identity.user());
+        return jobRepository.save(job);
+    }
+
+    private Job createQueuedProjectJob(
+            StoredProjectSubmission submission,
             String graderType,
             GraderDefinition grader,
             RequestIdentity identity
     ) {
         Job job = new Job(submission.originalFileName(), graderType, OffsetDateTime.now(), JobStatus.QUEUED);
-        job.setSubmissionId(submission.submissionId());
+        job.setSubmissionProjectId(submission.projectId());
+        job.setSubmissionKind(SubmissionKind.PROJECT_ZIP);
         job.setSubmissionPath(submission.key());
         job.setGraderImage(grader.getImageName());
         job.setInstitutionId(identity.institution());
@@ -120,7 +178,29 @@ public class JobSubmissionService {
     }
 
     private void validateSingleUploadExtension(MultipartFile file, GraderDefinition grader) {
-        if (submissionStorageService.isZipUpload(file)) {
+        String uploadMode = uploadMode(grader);
+        boolean isZipUpload = submissionStorageService.isZipUpload(file);
+
+        if ("project_zip".equals(uploadMode)) {
+            if (!isZipUpload) {
+                throw new IllegalArgumentException(
+                        "Grader '" + grader.getKey() + "' accepts .zip project archives."
+                );
+            }
+            return;
+        }
+
+        if ("batch_zip".equals(uploadMode) && isZipUpload) {
+            return;
+        }
+
+        if ("single_file".equals(uploadMode) && isZipUpload) {
+            throw new IllegalArgumentException(
+                    "Grader '" + grader.getKey() + "' accepts " + expectedExtension(grader) + " files."
+            );
+        }
+
+        if (isZipUpload) {
             return;
         }
 
@@ -137,7 +217,7 @@ public class JobSubmissionService {
         String expectedExtension = expectedExtension(grader);
         if (fileName == null || !fileName.trim().toLowerCase().endsWith(expectedExtension)) {
             throw new IllegalArgumentException(
-                    "Grader '" + grader.getKey() + "' accepts " + expectedExtension + " or .zip files."
+                    "Grader '" + grader.getKey() + "' accepts " + acceptedFormatsMessage(grader) + " files."
             );
         }
     }
@@ -153,6 +233,31 @@ public class JobSubmissionService {
             case "cpp", "c++" -> ".cpp";
             default -> ".py";
         };
+    }
+
+    private String uploadMode(GraderDefinition grader) {
+        String uploadMode = grader.getUploadMode();
+        return uploadMode == null || uploadMode.isBlank()
+                ? "batch_zip"
+                : uploadMode.trim().toLowerCase();
+    }
+
+    private SubmissionKind submissionKindForStoredFile(MultipartFile file) {
+        return submissionStorageService.isZipUpload(file)
+                ? SubmissionKind.BATCH_FILE
+                : SubmissionKind.SINGLE_FILE;
+    }
+
+    private String acceptedFormatsMessage(GraderDefinition grader) {
+        String uploadMode = uploadMode(grader);
+        if ("project_zip".equals(uploadMode)) {
+            return ".zip project archive";
+        }
+
+        String expectedExtension = expectedExtension(grader);
+        return "batch_zip".equals(uploadMode)
+                ? expectedExtension + " or .zip"
+                : expectedExtension;
     }
 
     private void cleanupCreatedJobs(List<Job> createdJobs) {
@@ -172,6 +277,14 @@ public class JobSubmissionService {
             } catch (Exception ignored) {
                 // Best-effort cleanup after database rollback.
             }
+        }
+    }
+
+    private void cleanupStoredProject(StoredProjectSubmission projectSubmission) {
+        try {
+            submissionStorageService.deleteProject(projectSubmission.key());
+        } catch (Exception ignored) {
+            // Best-effort cleanup after database rollback.
         }
     }
 }

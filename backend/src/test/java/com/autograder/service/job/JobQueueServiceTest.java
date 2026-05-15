@@ -20,6 +20,7 @@ import org.springframework.data.redis.core.StringRedisTemplate;
 import com.autograder.config.QueueProperties;
 import com.autograder.model.Job;
 import com.autograder.model.JobStatus;
+import com.autograder.model.SubmissionKind;
 import com.autograder.service.identity.RequestIdentity;
 
 class JobQueueServiceTest {
@@ -50,6 +51,7 @@ class JobQueueServiceTest {
         job.setSubmittedBy("student");
         job.setQueueMessageId("queue-message-1");
         job.setAttemptCount(1);
+        job.setSubmissionKind(SubmissionKind.SINGLE_FILE);
 
         service.enqueue(job, new RequestIdentity("university", "student"));
 
@@ -59,6 +61,7 @@ class JobQueueServiceTest {
         assertEquals(42L, message.jobId());
         assertEquals("queue-message-1", message.queueMessageId());
         assertEquals("db:2ee63863-c9ec-4a1f-8ce9-d4db05cc7a5c", message.submissionKey());
+        assertEquals("SINGLE_FILE", message.submissionKind());
         assertEquals("fib", message.graderType());
         assertEquals("university", message.institutionId());
         assertEquals("student", message.requestedBy());

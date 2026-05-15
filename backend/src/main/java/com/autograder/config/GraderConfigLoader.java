@@ -29,6 +29,7 @@ public class GraderConfigLoader {
     private static final int DEFAULT_CPU_LIMIT_MILLI = 500; // 500 originally
     private static final int DEFAULT_MEMORY_REQUEST_MB = 128; // 128 originally
     private static final int DEFAULT_MEMORY_LIMIT_MB = 512; // 512 originally
+    private static final String DEFAULT_UPLOAD_MODE = "batch_zip";
 
     // Jackson mapper to turn grader.json into java objects we can read
     private final ObjectMapper objectMapper;
@@ -143,6 +144,12 @@ public class GraderConfigLoader {
         if (grader.getLanguage() != null) {
             grader.setLanguage(grader.getLanguage().trim());
         }
+
+        if (grader.getUploadMode() == null || grader.getUploadMode().isBlank()) {
+            grader.setUploadMode(DEFAULT_UPLOAD_MODE);
+        } else {
+            grader.setUploadMode(grader.getUploadMode().trim().toLowerCase());
+        }
     }
 
     /**
@@ -205,6 +212,10 @@ public class GraderConfigLoader {
           throw new IllegalStateException("Grader '" + grader.getKey() + "' has invalid language.");
       }
 
+      if (!isValidUploadMode(grader.getUploadMode())) {
+          throw new IllegalStateException("Grader '" + grader.getKey() + "' has invalid uploadMode.");
+      }
+
       if (grader.getGraderFolder() == null || grader.getGraderFolder().isBlank()) {
           throw new IllegalStateException("Grader '" + grader.getKey() + "' is missing a graderFolder.");
       }
@@ -258,5 +269,11 @@ public class GraderConfigLoader {
                   "Grader '" + grader.getKey() + "' has memoryRequestMb greater than memoryLimitMb."
           );
       }
+    }
+
+    private boolean isValidUploadMode(String uploadMode) {
+        return "single_file".equals(uploadMode)
+                || "batch_zip".equals(uploadMode)
+                || "project_zip".equals(uploadMode);
     }
 }

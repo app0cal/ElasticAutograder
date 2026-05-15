@@ -14,6 +14,7 @@ import org.mockito.Mockito;
 
 import com.autograder.model.Job;
 import com.autograder.model.JobStatus;
+import com.autograder.model.SubmissionKind;
 import com.autograder.repository.JobRepository;
 import com.autograder.service.identity.RequestIdentity;
 
@@ -27,6 +28,7 @@ class JobQueryServiceTest {
         Job job = new Job("submission.py", "fib", OffsetDateTime.now(), JobStatus.QUEUED);
         job.setSubmissionPath("db:2ee63863-c9ec-4a1f-8ce9-d4db05cc7a5c");
         job.setSubmissionId(4L);
+        job.setSubmissionKind(SubmissionKind.SINGLE_FILE);
         job.setInstitutionId("university-a");
         job.setSubmittedBy("student-1");
         job.setAttemptCount(2);
@@ -39,6 +41,7 @@ class JobQueryServiceTest {
 
         assertEquals(1, response.size());
         assertEquals("submission.py", response.get(0).originalFilename());
+        assertEquals(SubmissionKind.SINGLE_FILE, response.get(0).submissionKind());
         assertEquals("university-a", response.get(0).institutionId());
         assertEquals("student-1", response.get(0).submittedBy());
         assertEquals(2, response.get(0).attemptCount());

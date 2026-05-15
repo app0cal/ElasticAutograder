@@ -2,6 +2,7 @@ package com.autograder.service.submission;
 
 import java.io.IOException;
 import java.io.InputStream;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.FileAlreadyExistsException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -28,6 +29,11 @@ import com.autograder.service.identity.RequestIdentity;
 public class LocalSubmissionStorageService implements SubmissionStorageService {
 
     private static final Path UPLOAD_ROOT = Path.of("grading/uploads");
+    private static final String PROJECT_STORAGE_KEY_PREFIX = "project-local:";
+    private static final int MAX_PROJECT_FILES = 100;
+    private static final long MAX_PROJECT_TOTAL_BYTES = 1_000_000;
+    private static final long MAX_PROJECT_FILE_BYTES = 200_000;
+    private static final int MAX_PROJECT_PATH_DEPTH = 8;
 
     /**
      * Stores a single file under the upload root using a sanitized base name.
@@ -108,6 +114,100 @@ public class LocalSubmissionStorageService implements SubmissionStorageService {
             cleanupDirectory(batchDirectory);
             throw e;
         }
+    }
+
+    @Override
+    public StoredProjectSubmission storeProjectZip(MultipartFile file, RequestIdentity identity) throws IOException {
+        ensureUploadRootExists();
+
+        String zipFileName = sanitizeFileName(file.getOriginalFilename());
+        Path projectDirectory = createZipUploadDirectory(zipFileName);
+        int fileCount = 0;
+        long totalBytes = 0;
+
+        try (InputStream inputStream = file.getInputStream();
+             ZipInputStream zipInputStream = new ZipInputStream(inputStream)) {
+            Set<String> seenPaths = new LinkedHashSet<>();
+            ZipEntry entry;
+
+            while ((entry = zipInputStream.getNextEntry()) != null) {
+                if (entry.isDirectory()) {
+                    zipInputStream.closeEntry();
+                    continue;
+                }
+
+                String relativePath = sanitizeProjectZipEntryPath(entry.getName());
+                if (!seenPaths.add(relativePath)) {
+                    throw new IllegalArgumentException("Project archive contains duplicate file path: " + relativePath);
+                }
+
+                byte[] bytes = zipInputStream.readAllBytes();
+                if (bytes.length > MAX_PROJECT_FILE_BYTES) {
+                    throw new IllegalArgumentException("Project archive contains a file larger than 200000 bytes.");
+                }
+
+                totalBytes += bytes.length;
+                if (totalBytes > MAX_PROJECT_TOTAL_BYTES) {
+                    throw new IllegalArgumentException("Project archive is larger than 1000000 bytes.");
+                }
+
+                Path extractedPath = projectDirectory.resolve(relativePath).normalize();
+                if (!extractedPath.startsWith(projectDirectory)) {
+                    throw new IllegalArgumentException("Zip archive contains an invalid file path.");
+                }
+
+                Files.createDirectories(extractedPath.getParent());
+                Files.write(extractedPath, bytes, StandardOpenOption.CREATE_NEW);
+                fileCount++;
+                if (fileCount > MAX_PROJECT_FILES) {
+                    throw new IllegalArgumentException("Project archive contains more than 100 files.");
+                }
+
+                zipInputStream.closeEntry();
+            }
+
+            if (fileCount == 0) {
+                throw new IllegalArgumentException("Project archive does not contain any files.");
+            }
+
+            String key = PROJECT_STORAGE_KEY_PREFIX + UPLOAD_ROOT.relativize(projectDirectory).toString().replace('\\', '/');
+            return new StoredProjectSubmission(null, key, zipFileName, fileCount);
+        } catch (IOException | RuntimeException e) {
+            cleanupDirectory(projectDirectory);
+            throw e;
+        }
+    }
+
+    @Override
+    public StoredProject readProject(String projectKey) throws IOException {
+        String projectPath = sanitizeLocalProjectKey(projectKey);
+        Path projectDirectory = resolveUploadPath(projectPath);
+        if (!Files.isDirectory(projectDirectory)) {
+            throw new IllegalArgumentException("Project submission not found: " + projectKey);
+        }
+
+        List<StoredProjectFile> files;
+        try (var walk = Files.walk(projectDirectory)) {
+            files = walk
+                    .filter(Files::isRegularFile)
+                    .sorted()
+                    .map(filePath -> toStoredProjectFile(projectDirectory, filePath))
+                    .toList();
+        }
+
+        return new StoredProject(projectKey, projectDirectory.getFileName().toString(), files);
+    }
+
+    @Override
+    public boolean deleteProject(String projectKey) throws IOException {
+        String projectPath = sanitizeLocalProjectKey(projectKey);
+        Path projectDirectory = resolveUploadPath(projectPath);
+        if (!Files.exists(projectDirectory)) {
+            return false;
+        }
+
+        cleanupDirectory(projectDirectory);
+        return true;
     }
 
     @Override
@@ -205,6 +305,11 @@ public class LocalSubmissionStorageService implements SubmissionStorageService {
 
     @Override
     public void deleteIfExists(String submissionKey) throws IOException {
+        if (isLocalProjectKey(submissionKey)) {
+            deleteProject(submissionKey);
+            return;
+        }
+
         delete(submissionKey);
     }
 
@@ -277,6 +382,46 @@ public class LocalSubmissionStorageService implements SubmissionStorageService {
         }
 
         return normalized;
+    }
+
+    private String sanitizeProjectZipEntryPath(String rawEntryName) {
+        Path normalized = sanitizeZipEntryName(rawEntryName);
+        if (normalized.getNameCount() > MAX_PROJECT_PATH_DEPTH) {
+            throw new IllegalArgumentException("Project archive contains a path deeper than 8 levels.");
+        }
+
+        return normalized.toString().replace('\\', '/');
+    }
+
+    private StoredProjectFile toStoredProjectFile(Path projectDirectory, Path filePath) {
+        try {
+            String relativePath = projectDirectory.relativize(filePath).toString().replace('\\', '/');
+            byte[] bytes = Files.readAllBytes(filePath);
+            return new StoredProjectFile(
+                    relativePath,
+                    new String(bytes, StandardCharsets.UTF_8),
+                    "text/plain",
+                    bytes.length
+            );
+        } catch (IOException e) {
+            throw new IllegalStateException("Failed to read project file: " + filePath, e);
+        }
+    }
+
+    private String sanitizeLocalProjectKey(String projectKey) {
+        if (!isLocalProjectKey(projectKey)) {
+            throw new IllegalArgumentException("Invalid project submission key.");
+        }
+
+        return sanitizeSubmissionKey(stripJsonStringQuotes(projectKey.trim()).substring(PROJECT_STORAGE_KEY_PREFIX.length()));
+    }
+
+    private boolean isLocalProjectKey(String projectKey) {
+        if (projectKey == null) {
+            return false;
+        }
+
+        return stripJsonStringQuotes(projectKey.trim()).startsWith(PROJECT_STORAGE_KEY_PREFIX);
     }
 
     private Path resolveUploadPath(String rawRelativePath) {

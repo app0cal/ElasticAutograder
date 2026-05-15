@@ -318,7 +318,7 @@ This does not add hidden-test policy, instructor-specific feedback controls, or 
 
 ## Future Goal 8: Support Multi-File And Project Submissions
 
-Status: Not Started
+Status: Finished
 Priority: Medium Term
 
 ### Problem
@@ -338,6 +338,16 @@ The system can treat a zip archive as one project submission when an assignment 
 - Ensure Kubernetes delivery can mount a project directory, not only `submission.py`.
 - Keep size, file count, and archive depth limits configurable.
 
+### Implementation Phases
+
+1. Define the upload-mode contract so graders can declare `single_file`, `batch_zip`, or `project_zip`, and expose that behavior to the frontend.
+2. Add durable project zip storage that preserves normalized relative paths and creates one queued job for a project archive.
+3. Update job intake and queueing so project jobs remain separate from existing single-file and batch zip flows.
+4. Deliver project files into Kubernetes as a mounted project directory instead of a single `submission.py` file.
+5. Implement runtime support for executable `project_cases` manifests with project-level build and test commands.
+6. Add at least one sample project grader and fixtures that prove pass, wrong-answer, build-error, and runtime-error behavior.
+7. Update documentation and verification scripts so local users understand which upload modes are supported and how to test them.
+
 ### Acceptance Checklist
 
 - Existing single-file and batch zip uploads continue to work.
@@ -348,7 +358,13 @@ The system can treat a zip archive as one project submission when an assignment 
 
 ### Completion Notes
 
-Not finished yet.
+- Phase 1 added the grader `uploadMode` contract (`single_file`, `batch_zip`, `project_zip`) across backend config, grader API responses, and frontend accepted-file behavior.
+- Phase 2 added durable project zip storage with normalized relative paths, project/file database records, validation limits, and one visible queued job per project archive.
+- Phase 3 added explicit job submission kinds (`SINGLE_FILE`, `BATCH_FILE`, `PROJECT_ZIP`), exposes them in job responses, and prevents project jobs from entering execution paths before runtime support exists.
+- Phase 4 added Kubernetes project directory delivery builders that map stored project files into `/work/project/<relative_path>` with ConfigMap item mappings while preserving existing single-file delivery.
+- Phase 5 made `project_cases` executable in the runtime with optional project compile commands, per-case run commands, optional stdin, exact stdout comparison, and normalized result JSON. `PROJECT_ZIP` jobs now enqueue and dispatch through the existing backend queue/orchestrator path using `/work/project`.
+- Phase 6 added the `fib-java-project` sample grader plus project zip fixtures for pass, wrong-answer, build-error, and runtime-error behavior.
+- Phase 7 added project smoke scenarios, project verification commands, and the documentation updates needed to keep the project submission path easy to exercise locally.
 
 ## Future Goal 9: Add Assignment And Course Management
 
@@ -367,9 +383,20 @@ Institutions can manage courses and assignments in the database, and jobs can be
 
 - Add durable course and assignment models owned by an institution.
 - Link graders, submissions, and jobs to assignments.
-- Support assignment metadata such as title, summary, due date, open/closed state, allowed languages, and visible test policy.
+- Support assignment metadata such as title, summary, due date, open/closed state, allowed languages, late policy, grader version, and visible result policy.
 - Keep JSON grader config as a local/dev fallback until database management is mature.
-- Scope course and assignment queries by institution and user role once real auth exists.
+- Use the existing institution/identity seams for scoping until a future institution-specific identity integration exists.
+
+### Institutional Benefit
+
+This turns the platform into coursework infrastructure instead of a raw grader launcher. Institutions gain durable ownership, assignment history, and instructor-managed submission windows without editing config files.
+
+### What It Automates
+
+- Assignment availability windows
+- Assignment-scoped grader selection
+- Submission grouping and history by course/assignment
+- Assignment-level filtering for job history and reporting
 
 ### Acceptance Checklist
 
@@ -383,26 +410,41 @@ Institutions can manage courses and assignments in the database, and jobs can be
 
 Not finished yet.
 
-## Future Goal 10: Add Instructor-Facing Grader Management
+## Future Goal 10: Add Hidden Tests, Rubric Controls, And Instructor-Facing Grader Management
 
 Status: Not Started
 Priority: Medium Term
 
 ### Problem
 
-Adding or changing graders currently requires editing config files and rebuilding images manually. Instructors need safer workflows for configuring assignments without breaking the running system.
+The current grader model is good enough for visible pass/fail cases, but real coursework needs hidden tests, weighted scoring, and safer workflows for changing graders without breaking live assignments.
 
 ### Target Outcome
 
-Instructors can create, validate, preview, and activate grader definitions through controlled UI and API workflows.
+Instructors can create, validate, preview, version, and activate grader definitions through controlled UI and API workflows, with hidden tests and rubric-based scoring supported as first-class grading features.
 
 ### Implementation Notes
 
 - Add backend APIs for creating and updating grader definitions.
-- Validate manifests and resource settings before activation.
+- Extend grader definitions to support visible tests, hidden tests, weighted rubric sections, and feedback visibility rules.
+- Validate manifests, scoring rules, and resource settings before activation.
+- Add grader draft, preview, active, inactive, and broken states.
+- Version graders so assignments can point to a specific active revision.
 - Track grader image build/load status separately from assignment visibility.
 - Prevent submissions to graders that are invalid, unavailable, or still building.
 - Add a clear rollback or deactivate path for broken graders.
+
+### Institutional Benefit
+
+This improves grading quality directly. Instructors can protect assignment integrity with hidden tests, award partial credit with rubric controls, and change graders through a safer workflow than editing config files by hand.
+
+### What It Automates
+
+- Grader validation before activation
+- Versioned grader rollout and rollback
+- Hidden versus visible feedback handling
+- Weighted score calculation
+- Prevention of submissions to invalid or still-building graders
 
 ### Acceptance Checklist
 
@@ -410,79 +452,60 @@ Instructors can create, validate, preview, and activate grader definitions throu
 - Invalid manifests are rejected before activation.
 - Active graders are visible to the submit page only when ready.
 - Broken grader state is visible to instructors.
-- Tests cover validation and activation rules.
+- Tests cover validation, activation, rubric scoring, and hidden feedback visibility rules.
 
 ### Completion Notes
 
 Not finished yet.
 
-## Future Goal 11: Add Real Authentication And Role-Based Authorization
+## Future Goal 11: Add Submission Retention, Binary Storage, And Object-Storage Support
 
 Status: Not Started
 Priority: Long Term
 
 ### Problem
 
-Mock identity headers are useful for local development and demos, but they are not real authentication. A deployed autograder needs users, roles, and enforceable access boundaries.
+Durable submission and result storage is necessary for distributed workers, but the current path is still oriented around local development and text-heavy fixtures. Institutions need larger project support, binary-safe storage, and lifecycle rules so storage growth stays manageable.
 
 ### Target Outcome
 
-The system supports authenticated users with institution, course, assignment, and role-based access controls.
+Institutions can store larger and binary submissions through a storage abstraction that supports object storage, while applying retention, export, and cleanup policies without losing the metadata needed for reporting or audits.
 
 ### Implementation Notes
 
-- Replace mock headers with a real authentication provider.
-- Define roles such as student, instructor, institution admin, and system admin.
-- Enforce institution and course boundaries on all read/write APIs.
-- Keep a local development mode that can still use mock identities.
-- Add audit fields for who created assignments, submitted work, and changed grader settings.
-
-### Acceptance Checklist
-
-- Users must authenticate before using protected APIs.
-- Students can only see their own submissions unless policy says otherwise.
-- Instructors can manage assignments for their courses.
-- Institution admins cannot access other institutions.
-- Tests cover authorization success and denial paths.
-
-### Completion Notes
-
-Not finished yet.
-
-## Future Goal 12: Add Submission Retention And Storage Lifecycle Policies
-
-Status: Not Started
-Priority: Long Term
-
-### Problem
-
-Durable submission and result storage is necessary for distributed workers, but storage will grow without lifecycle rules.
-
-### Target Outcome
-
-Institutions can define how long submissions, job metadata, and result bodies are retained, exported, or deleted.
-
-### Implementation Notes
-
+- Add a submission storage abstraction with local filesystem support for development and object-storage support for deployed environments.
+- Keep submission payload blobs separate from durable metadata records.
+- Support binary-safe storage and retrieval for larger project archives and future artifact types.
 - Add retention settings at system or institution level.
 - Add scheduled cleanup for old submissions and results.
 - Preserve job metadata needed for audit and reporting.
-- Add export support before destructive cleanup.
-- Consider object storage for larger or binary project submissions.
+- Add export support before destructive cleanup where retention policies require it.
+
+### Institutional Benefit
+
+This makes the platform viable for larger courses and real project submissions. Institutions can keep the records they need, expire payloads they do not want to retain forever, and avoid local-disk assumptions that break down in production.
+
+### What It Automates
+
+- Payload offloading to object storage
+- Storage lifecycle enforcement
+- Export-before-delete workflows
+- Separation of retained summaries from deleted submission contents
 
 ### Acceptance Checklist
 
+- Storage providers can store and retrieve project archives and binary submission payloads.
 - Retention settings are configurable.
 - Cleanup can delete old submission contents without breaking retained job summaries.
 - Exports can be generated before cleanup.
 - Cleanup actions are logged without exposing submission contents.
-- Tests cover retention eligibility and deletion behavior.
+- Tests cover provider behavior, retention eligibility, and deletion behavior.
 
 ### Completion Notes
 
 Not finished yet.
 
-## Future Goal 13: Harden Sandbox And Security Boundaries
+## Future Goal 12: Harden Sandbox And Security Boundaries
 
 Status: Not Started
 Priority: Long Term
@@ -502,7 +525,19 @@ Grader pods run with least privilege, constrained resources, restricted network/
 - Use read-only root filesystems where practical.
 - Add seccomp, AppArmor, or equivalent runtime profiles when supported.
 - Keep grader pods separate from backend and database credentials.
+- Validate grader/runtime configurations against safe defaults before execution.
 - Document what security guarantees the local kind setup does and does not provide.
+
+### Institutional Benefit
+
+This makes the platform reviewable by institutional infrastructure and security teams. It reduces the risk that untrusted student code can escape its execution boundary or reach services it should not see.
+
+### What It Automates
+
+- Safe-by-default pod configuration
+- Blocking or flagging unsafe execution settings
+- Network isolation for standard grading jobs
+- Enforcement of resource and credential separation
 
 ### Acceptance Checklist
 
@@ -511,6 +546,93 @@ Grader pods run with least privilege, constrained resources, restricted network/
 - Resource quotas and limits are documented and enforced.
 - Backend/database credentials are not mounted into grader pods.
 - Security assumptions are documented for local and production-like deployments.
+
+### Completion Notes
+
+Not finished yet.
+
+## Future Goal 13: Add Large-Burst Validation And Operational Observability
+
+Status: Not Started
+Priority: Long Term
+
+### Problem
+
+The system currently has enough telemetry and tooling for local verification, but institutions need stronger observability and load validation to survive class deadlines and operator triage under burst traffic.
+
+### Target Outcome
+
+Operators can measure, diagnose, and recover from queue backlogs, slow grading, failed pods, and burst submission events with clear metrics, logs, and runbooks.
+
+### Implementation Notes
+
+- Add structured metrics for queue depth, dispatch latency, grading latency, pod startup time, retry counts, and failure reasons.
+- Add load and soak validation paths that simulate deadline-style submission bursts.
+- Add stuck-job detection and better operator tooling for requeue and triage.
+- Expose assignment- and institution-level operational views or equivalent structured diagnostics.
+- Add runbooks for common failure classes such as queue backlog, broken grader image, storage failure, and worker starvation.
+
+### Institutional Benefit
+
+This makes the platform predictable under real teaching loads. Institutions care about whether the system still behaves correctly when hundreds or thousands of students submit near a deadline, not just whether a single happy-path job succeeds.
+
+### What It Automates
+
+- Queue health diagnosis
+- Failure categorization
+- Burst-capacity validation
+- Faster operator response to stuck or degraded grading pipelines
+
+### Acceptance Checklist
+
+- Metrics and logs cover queue, runtime, storage, and orchestrator health.
+- Load tests can simulate high-burst submission windows.
+- Stuck jobs can be detected and surfaced automatically.
+- Operators have documented commands and workflows for common failure modes.
+- Tests cover metrics emission, backlog detection, and failure-triage behavior.
+
+### Completion Notes
+
+Not finished yet.
+
+## Future Goal 14: Improve Submission Lifecycle And Institution Deployment Documentation
+
+Status: Not Started
+Priority: Long Term
+
+### Problem
+
+The platform has setup and smoke-test documentation, but institutions still need a clearer end-to-end operating model for grader authoring, assignment setup, deployment, submission handling, retention, and failure recovery.
+
+### Target Outcome
+
+Instructors and operators can deploy, verify, and run the autograder through documented workflows without reverse-engineering the codebase or relying on local tribal knowledge.
+
+### Implementation Notes
+
+- Document the end-to-end lifecycle: create course, create assignment, attach grader version, deploy grader, verify, submit, review results, retain/export/cleanup.
+- Separate documentation by audience: instructor, grader author, and platform operator.
+- Expand deployment docs for local demo versus institutional cluster installation.
+- Add runbooks for image build failures, queue backlog, invalid grader activation, storage issues, and stuck jobs.
+- Keep smoke tests and release checks aligned with the documented workflows.
+
+### Institutional Benefit
+
+This reduces adoption friction. Institutions can evaluate and operate the platform with less source-code knowledge, lower support cost, and fewer one-off setup mistakes.
+
+### What It Automates
+
+- Standardized onboarding and deployment verification
+- Repeatable smoke checks for new environments
+- Predictable operator response paths for common incidents
+
+### Acceptance Checklist
+
+- Documentation covers instructor, grader author, and operator workflows.
+- Fresh-start deployment instructions can be followed without missing hidden prerequisites.
+- Smoke tests match the documented verification path.
+- Runbooks exist for the main operational failure classes.
+- Documentation is updated alongside new workflow features.
 
 ### Completion Notes
 

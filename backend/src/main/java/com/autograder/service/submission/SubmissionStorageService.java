@@ -34,6 +34,12 @@ public interface SubmissionStorageService {
      */
     List<StoredSubmission> storeZip(MultipartFile file, RequestIdentity identity) throws IOException;
 
+    StoredProjectSubmission storeProjectZip(MultipartFile file, RequestIdentity identity) throws IOException;
+
+    StoredProject readProject(String projectKey) throws IOException;
+
+    boolean deleteProject(String projectKey) throws IOException;
+
     boolean isZipUpload(MultipartFile file);
 
     String resolveSubmissionKey(String storedKey, String fallbackRawRequestBody);

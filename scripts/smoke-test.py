@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
 """
-Submit one known-good grading job and verify it reaches SUCCEEDED.
+Submit one local grading job and verify it reaches the expected terminal status.
 
 This script is intentionally mutating: it creates a real local job through the
 public upload API so developers can validate the full API, queue, worker, and
-Kubernetes grader path.
+Kubernetes grader path. It supports success and intentional-failure scenarios.
 """
 
 from __future__ import annotations
@@ -15,6 +15,7 @@ import mimetypes
 import sys
 import time
 import uuid
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 from urllib import error, request
@@ -24,23 +25,60 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_API_BASE = "http://localhost:8080"
 DEFAULT_FIXTURE = REPO_ROOT / "mocksubmission" / "fib" / "fibpass1.py"
 TERMINAL_STATUSES = {"SUCCEEDED", "PARTIAL", "FAILED", "DEAD_LETTERED", "CANCELLED"}
+SCENARIOS = {
+    "success": {
+        "grader": "fib",
+        "fixture": DEFAULT_FIXTURE,
+        "expected_status": "SUCCEEDED",
+    },
+    "project-java-pass": {
+        "grader": "fib-java-project",
+        "fixture": REPO_ROOT / "mocksubmission" / "fib-java-project" / "fib_project_pass.zip",
+        "expected_status": "SUCCEEDED",
+    },
+    "project-java-build-failure": {
+        "grader": "fib-java-project",
+        "fixture": REPO_ROOT / "mocksubmission" / "fib-java-project" / "fib_project_compile_error.zip",
+        "expected_status": "FAILED",
+    },
+    "project-java-wrong-answer": {
+        "grader": "fib-java-project",
+        "fixture": REPO_ROOT / "mocksubmission" / "fib-java-project" / "fib_project_wrong.zip",
+        "expected_status": "FAILED",
+    },
+    "project-java-runtime-error": {
+        "grader": "fib-java-project",
+        "fixture": REPO_ROOT / "mocksubmission" / "fib-java-project" / "fib_project_runtime_error.zip",
+        "expected_status": "FAILED",
+    },
+}
+
+
+@dataclass(frozen=True)
+class SmokeTarget:
+    scenario: str
+    grader: str
+    fixture: Path
+    expected_status: str
 
 
 def main() -> int:
     args = parse_args()
-    fixture = resolve_fixture(args.fixture)
+    target = resolve_target(args)
 
-    print(f"Uploading smoke fixture: {display_path(fixture)}")
-    job_id = upload_job(args, fixture)
+    print(f"Scenario: {target.scenario}")
+    print(f"Expected status: {target.expected_status}")
+    print(f"Uploading smoke fixture: {display_path(target.fixture)}")
+    job_id = upload_job(args, target.grader, target.fixture)
     print(f"Created job {job_id}; polling for up to {args.timeout_seconds}s")
 
     job, health = wait_for_terminal(args, job_id)
     status = job.get("status") if job else None
-    if status == "SUCCEEDED":
-        print(f"Smoke test passed: job {job_id} finished SUCCEEDED")
+    if status == target.expected_status:
+        print(f"Smoke test passed: job {job_id} finished {status}")
         return 0
 
-    print(f"Smoke test failed: job {job_id} finished {status or 'UNKNOWN'}")
+    print(f"Smoke test failed: job {job_id} finished {status or 'UNKNOWN'} but expected {target.expected_status}")
     if job:
         print(f"Failure reason: {job.get('failureReason') or 'none'}")
         print(f"Message: {job.get('message') or job.get('errorMessage') or 'none'}")
@@ -50,14 +88,40 @@ def main() -> int:
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Run one end-to-end Elastic Autograder smoke test.")
+    parser.add_argument(
+        "--scenario",
+        default="success",
+        choices=sorted(SCENARIOS.keys()),
+        help="Smoke scenario to run.",
+    )
     parser.add_argument("--api-base", default=DEFAULT_API_BASE)
-    parser.add_argument("--grader", default="fib")
-    parser.add_argument("--fixture", type=Path, default=DEFAULT_FIXTURE)
+    parser.add_argument("--grader")
+    parser.add_argument("--fixture", type=Path)
+    parser.add_argument(
+        "--expect-status",
+        choices=sorted(TERMINAL_STATUSES),
+        help="Expected terminal job status for the selected smoke scenario.",
+    )
     parser.add_argument("--institution", default="local")
     parser.add_argument("--user", default="smoke-tester")
     parser.add_argument("--timeout-seconds", type=int, default=120)
     parser.add_argument("--poll-interval", type=float, default=2.0)
     return parser.parse_args()
+
+
+def resolve_target(args: argparse.Namespace) -> SmokeTarget:
+    scenario = resolve_scenario(args.scenario)
+    grader = args.grader or scenario.grader
+    fixture = resolve_fixture(args.fixture or scenario.fixture)
+    expected_status = args.expect_status or scenario.expected_status
+    return SmokeTarget(args.scenario, grader, fixture, expected_status)
+
+
+def resolve_scenario(name: str) -> SmokeTarget:
+    scenario = SCENARIOS.get(name)
+    if scenario is None:
+        raise SystemExit(f"Unsupported scenario: {name}")
+    return SmokeTarget(name, scenario["grader"], scenario["fixture"], scenario["expected_status"])
 
 
 def resolve_fixture(path: Path) -> Path:
@@ -74,9 +138,9 @@ def display_path(path: Path) -> str:
         return str(path)
 
 
-def upload_job(args: argparse.Namespace, fixture: Path) -> int:
+def upload_job(args: argparse.Namespace, grader: str, fixture: Path) -> int:
     boundary = f"----elastic-autograder-smoke-{uuid.uuid4().hex}"
-    body = multipart_body(boundary, fixture, args.grader)
+    body = multipart_body(boundary, fixture, grader)
     headers = {
         "Content-Type": f"multipart/form-data; boundary={boundary}",
         **identity_headers(args),

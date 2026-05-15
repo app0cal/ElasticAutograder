@@ -7,6 +7,7 @@ public record GradingJobMessage(
         Long jobId,
         String queueMessageId,
         String submissionKey,
+        String submissionKind,
         String graderType,
         String institutionId,
         String requestedBy,

@@ -2,6 +2,8 @@ package com.autograder.service;
 
 import tools.jackson.databind.JsonNode;
 
+import com.autograder.model.SubmissionKind;
+
 /**
  * Abstraction for running a grading job for a submission.
  * 
@@ -10,5 +12,11 @@ import tools.jackson.databind.JsonNode;
  * 
  */
 public interface GradingOrchestrator {
-    JsonNode runJobInKubernetes(Long jobId, String fileName, String graderType, String institutionId) throws Exception;
+    JsonNode runJobInKubernetes(
+            Long jobId,
+            String fileName,
+            SubmissionKind submissionKind,
+            String graderType,
+            String institutionId
+    ) throws Exception;
 }

@@ -23,7 +23,10 @@ import tools.jackson.databind.ObjectMapper;
 import com.autograder.config.KubernetesGradingProperties;
 import com.autograder.model.FailureReason;
 import com.autograder.model.GraderDefinition;
+import com.autograder.model.SubmissionKind;
 import com.autograder.service.submission.LocalSubmissionStorageService;
+import com.autograder.service.submission.StoredProject;
+import com.autograder.service.submission.StoredProjectFile;
 import com.autograder.service.submission.SubmissionStorageService;
 
 /**
@@ -95,18 +98,33 @@ public class Fabric8GradingOrchestrator implements GradingOrchestrator {
      * @throws Exception ONLY if job creation, execution, log parsing, or cleanup fails
      */
     @Override
-    public JsonNode runJobInKubernetes(Long jobId, String fileName, String graderType, String institutionId) throws Exception {
+    public JsonNode runJobInKubernetes(
+            Long jobId,
+            String fileName,
+            SubmissionKind submissionKind,
+            String graderType,
+            String institutionId
+    ) throws Exception {
         if (graderType == null || graderType.isBlank()) {
             throw new IllegalArgumentException("graderType is required.");
         }
         GraderDefinition grader = graderRegistry.getRequired(graderType);
 
-        String cleanedFileName = submissionStorageService.sanitizeSubmissionKey(fileName);
+        SubmissionKind effectiveSubmissionKind = submissionKind == null ? SubmissionKind.SINGLE_FILE : submissionKind;
+        String cleanedFileName = effectiveSubmissionKind == SubmissionKind.PROJECT_ZIP
+                ? fileName
+                : submissionStorageService.sanitizeSubmissionKey(fileName);
         String configMapName = "submission-job-" + jobId;
 
         try{
-            createSubmissionConfigMap(jobId, cleanedFileName, graderType, institutionId);
-            createGradingJob(jobId, grader, institutionId);
+            if (effectiveSubmissionKind == SubmissionKind.PROJECT_ZIP) {
+                StoredProject project = submissionStorageService.readProject(cleanedFileName);
+                createProjectSubmissionConfigMap(jobId, project, graderType, institutionId);
+                createProjectGradingJob(jobId, grader, institutionId, project);
+            } else {
+                createSubmissionConfigMap(jobId, cleanedFileName, graderType, institutionId);
+                createGradingJob(jobId, grader, institutionId);
+            }
             waitForJobCompletion(jobId,grader.getTimeoutSeconds());
             String logs = getJobLogs(jobId);
 
@@ -131,6 +149,10 @@ public class Fabric8GradingOrchestrator implements GradingOrchestrator {
                 logger.warn("Failed to delete ConfigMap {}: {}", configMapName, e.getMessage());
             }
         }
+    }
+
+    public JsonNode runJobInKubernetes(Long jobId, String fileName, String graderType, String institutionId) throws Exception {
+        return runJobInKubernetes(jobId, fileName, SubmissionKind.SINGLE_FILE, graderType, institutionId);
     }
 
     /**
@@ -192,6 +214,36 @@ public class Fabric8GradingOrchestrator implements GradingOrchestrator {
                 .build();
     }
 
+    public ConfigMap createProjectSubmissionConfigMap(
+            Long jobId,
+            StoredProject project,
+            String graderType,
+            String institutionId
+    ) {
+        ConfigMap configMap = buildProjectSubmissionConfigMap(jobId, project, graderType, institutionId);
+
+        return kubernetesClient.configMaps()
+                .inNamespace(kubernetesProperties.getNamespace())
+                .resource(configMap)
+                .createOrReplace();
+    }
+
+    ConfigMap buildProjectSubmissionConfigMap(
+            Long jobId,
+            StoredProject project,
+            String graderType,
+            String institutionId
+    ) {
+        ConfigMapBuilder builder = baseSubmissionConfigMapBuilder(jobId, graderType, institutionId);
+        int index = 0;
+        for (StoredProjectFile file : project.files()) {
+            builder.addToData(projectConfigMapKey(index), file.content());
+            index++;
+        }
+
+        return builder.build();
+    }
+
     /**
      * Creates the Kubernetes Job that runs the grader container.
      *
@@ -220,11 +272,40 @@ public class Fabric8GradingOrchestrator implements GradingOrchestrator {
                 .createOrReplace();
     }
 
+    public Job createProjectGradingJob(
+            Long jobId,
+            GraderDefinition grader,
+            String institutionId,
+            StoredProject project
+    ) {
+        enforceMaxActiveJobs();
+        Job job = buildProjectGradingJob(jobId, grader, institutionId, project);
+
+        return kubernetesClient.batch().v1().jobs()
+                .inNamespace(kubernetesProperties.getNamespace())
+                .resource(job)
+                .createOrReplace();
+    }
+
     Job buildGradingJob(Long jobId, GraderDefinition grader) {
         return buildGradingJob(jobId, grader, "unknown");
     }
 
     Job buildGradingJob(Long jobId, GraderDefinition grader, String institutionId) {
+        return buildGradingJob(jobId, grader, institutionId, "/work/submission.py", null);
+    }
+
+    Job buildProjectGradingJob(Long jobId, GraderDefinition grader, String institutionId, StoredProject project) {
+        return buildGradingJob(jobId, grader, institutionId, "/work/project", project);
+    }
+
+    private Job buildGradingJob(
+            Long jobId,
+            GraderDefinition grader,
+            String institutionId,
+            String runtimeSubmissionPath,
+            StoredProject project
+    ) {
         String jobName = "grading-job-" + jobId;
         String configMapName = "submission-job-" + jobId;
         String graderType = grader.getKey();
@@ -266,7 +347,7 @@ public class Fabric8GradingOrchestrator implements GradingOrchestrator {
                             .withImage(grader.getImageName())
                             .withImagePullPolicy("IfNotPresent")
                             .withCommand("python", "/app/main.py")
-                            .withArgs("/work/submission.py", grader.getManifestPath())
+                            .withArgs(runtimeSubmissionPath, grader.getManifestPath())
                             .withNewResources()
                                 .addToRequests("cpu", toCpuQuantity(grader.getCpuRequestMilli()))
                                 .addToRequests("memory", toMemoryQuantity(grader.getMemoryRequestMb()))
@@ -282,6 +363,7 @@ public class Fabric8GradingOrchestrator implements GradingOrchestrator {
                             .withName("submission-volume")
                             .withNewConfigMap()
                                 .withName(configMapName)
+                                .withItems(projectVolumeItems(project))
                             .endConfigMap()
                         .endVolume()
                     .endSpec()
@@ -291,6 +373,46 @@ public class Fabric8GradingOrchestrator implements GradingOrchestrator {
 
         addGraderLanguageEnv(job, grader);
         return job;
+    }
+
+    private ConfigMapBuilder baseSubmissionConfigMapBuilder(Long jobId, String graderType, String institutionId) {
+        String configMapName = "submission-job-" + jobId;
+
+        return new ConfigMapBuilder()
+                .withNewMetadata()
+                    .withName(configMapName)
+                    .addToLabels("app", "elastic-autograder")
+                    .addToLabels("component", "grader")
+                    .addToLabels("job-id", String.valueOf(jobId))
+                    .addToLabels("institution-id", toLabelValue(institutionId))
+                    .addToLabels("grader-type", toLabelValue(graderType))
+                    .addToAnnotations("elastic-autograder/job-id", String.valueOf(jobId))
+                    .addToAnnotations("elastic-autograder/institution-id", institutionId)
+                    .addToAnnotations("elastic-autograder/grader-type", graderType)
+                .endMetadata();
+    }
+
+    private java.util.List<io.fabric8.kubernetes.api.model.KeyToPath> projectVolumeItems(StoredProject project) {
+        if (project == null) {
+            return null;
+        }
+
+        java.util.List<io.fabric8.kubernetes.api.model.KeyToPath> items = new ArrayList<>();
+        int index = 0;
+        for (StoredProjectFile file : project.files()) {
+            items.add(new io.fabric8.kubernetes.api.model.KeyToPath(
+                    projectConfigMapKey(index),
+                    null,
+                    "project/" + file.relativePath()
+            ));
+            index++;
+        }
+
+        return items;
+    }
+
+    private String projectConfigMapKey(int index) {
+        return "project-file-" + index;
     }
 
     private void addGraderLanguageEnv(Job job, GraderDefinition grader) {

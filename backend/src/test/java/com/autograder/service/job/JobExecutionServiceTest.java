@@ -21,6 +21,7 @@ import org.mockito.Mockito;
 import com.autograder.model.FailureReason;
 import com.autograder.model.Job;
 import com.autograder.model.JobStatus;
+import com.autograder.model.SubmissionKind;
 import com.autograder.repository.JobRepository;
 import com.autograder.service.GradingFailureException;
 import com.autograder.service.LocalGraderSetupStatus;
@@ -99,6 +100,19 @@ class JobExecutionServiceTest {
     }
 
     @Test
+    void enqueueJob_projectZipJob_returnsAcceptedAndSchedulesWork() throws Exception {
+        Job job = job(17L);
+        job.setSubmissionKind(SubmissionKind.PROJECT_ZIP);
+        when(jobRepository.findById(17L)).thenReturn(Optional.of(job));
+
+        JobEnqueueResponse response = service.enqueueJob(17L, RequestIdentity.localAnonymous());
+
+        assertEquals(202, response.status().value());
+        assertEquals("Job 17 queued.", response.body().asText());
+        verify(jobQueueService).enqueue(job, RequestIdentity.localAnonymous());
+    }
+
+    @Test
     void executeQueuedJob_success_persistsResultAndRetainsSubmission() throws Exception {
         Job job = job(11L);
         job.setSubmissionPath("db:2ee63863-c9ec-4a1f-8ce9-d4db05cc7a5c");
@@ -113,7 +127,7 @@ class JobExecutionServiceTest {
         result.put("tests_passed", 2);
         result.put("tests_total", 2);
         result.putArray("results").addObject().put("name", "case_1").put("passed", true);
-        when(jobDispatcher.dispatch(11L, "db:2ee63863-c9ec-4a1f-8ce9-d4db05cc7a5c", "fib", "local")).thenReturn(result);
+        when(jobDispatcher.dispatch(11L, "db:2ee63863-c9ec-4a1f-8ce9-d4db05cc7a5c", SubmissionKind.SINGLE_FILE, "fib", "local")).thenReturn(result);
 
         service.executeQueuedJob(11L, "worker-a");
 
@@ -130,7 +144,7 @@ class JobExecutionServiceTest {
 
         service.executeQueuedJob(11L, "worker-a");
 
-        verify(jobDispatcher, never()).dispatch(any(), any(), any(), any());
+        verify(jobDispatcher, never()).dispatch(any(), any(), any(), any(), any());
     }
 
     @Test
@@ -149,13 +163,13 @@ class JobExecutionServiceTest {
         result.put("tests_passed", 1);
         result.put("tests_total", 1);
         result.putArray("results").addObject().put("name", "case_1").put("passed", true);
-        when(jobDispatcher.dispatch(21L, "submission.py", "fib", "local")).thenReturn(result);
+        when(jobDispatcher.dispatch(21L, "submission.py", SubmissionKind.SINGLE_FILE, "fib", "local")).thenReturn(result);
 
         service.executeQueuedJob(21L, "worker-a");
         service.executeQueuedJob(21L, "worker-b");
 
         assertEquals(JobStatus.SUCCEEDED, job.getStatus());
-        verify(jobDispatcher, times(1)).dispatch(21L, "submission.py", "fib", "local");
+        verify(jobDispatcher, times(1)).dispatch(21L, "submission.py", SubmissionKind.SINGLE_FILE, "fib", "local");
     }
 
     @Test
@@ -189,6 +203,41 @@ class JobExecutionServiceTest {
     }
 
     @Test
+    void executeQueuedJob_projectZipJobDispatchesWithProjectSubmissionKind() throws Exception {
+        Job job = job(23L);
+        job.setSubmissionKind(SubmissionKind.PROJECT_ZIP);
+        job.setSubmissionPath("project:2ee63863-c9ec-4a1f-8ce9-d4db05cc7a5c");
+        job.setAttemptCount(1);
+        when(jobRepository.findById(23L)).thenReturn(Optional.of(job));
+        when(jobRepository.claimQueuedJob(23L, "worker-a")).thenReturn(1);
+
+        ObjectNode result = objectMapper.createObjectNode();
+        result.put("status", "SUCCEEDED");
+        result.put("tests_passed", 1);
+        result.put("tests_total", 1);
+        result.putArray("results").addObject().put("name", "case_1").put("passed", true);
+        when(jobDispatcher.dispatch(
+                23L,
+                "project:2ee63863-c9ec-4a1f-8ce9-d4db05cc7a5c",
+                SubmissionKind.PROJECT_ZIP,
+                "fib",
+                "local"
+        )).thenReturn(result);
+
+        service.executeQueuedJob(23L, "worker-a");
+
+        assertEquals(JobStatus.SUCCEEDED, job.getStatus());
+        verify(submissionStorageService, never()).resolveSubmissionKey(any(), any());
+        verify(jobDispatcher).dispatch(
+                23L,
+                "project:2ee63863-c9ec-4a1f-8ce9-d4db05cc7a5c",
+                SubmissionKind.PROJECT_ZIP,
+                "fib",
+                "local"
+        );
+    }
+
+    @Test
     void executeQueuedJob_timeoutFailure_persistsFinalFailure() throws Exception {
         Job job = job(13L);
         job.setSubmissionPath("submission.py");
@@ -197,7 +246,7 @@ class JobExecutionServiceTest {
         when(jobRepository.claimQueuedJob(13L, "worker-a")).thenReturn(1);
         when(submissionStorageService.resolveSubmissionKey("submission.py", null))
                 .thenReturn("submission.py");
-        when(jobDispatcher.dispatch(13L, "submission.py", "fib", "local"))
+        when(jobDispatcher.dispatch(13L, "submission.py", SubmissionKind.SINGLE_FILE, "fib", "local"))
                 .thenThrow(new GradingFailureException(FailureReason.TIMEOUT, "Timed out"));
 
         service.executeQueuedJob(13L, "worker-a");
@@ -217,7 +266,7 @@ class JobExecutionServiceTest {
         when(jobRepository.claimQueuedJob(15L, "worker-a")).thenReturn(1);
         when(submissionStorageService.resolveSubmissionKey("submission.py", null))
                 .thenReturn("submission.py");
-        when(jobDispatcher.dispatch(15L, "submission.py", "fib", "local"))
+        when(jobDispatcher.dispatch(15L, "submission.py", SubmissionKind.SINGLE_FILE, "fib", "local"))
                 .thenThrow(new GradingFailureException(FailureReason.RESOURCE_LIMIT, "OOMKilled"));
 
         service.executeQueuedJob(15L, "worker-a");
@@ -237,7 +286,7 @@ class JobExecutionServiceTest {
         when(jobRepository.claimQueuedJob(19L, "worker-a")).thenReturn(1);
         when(submissionStorageService.resolveSubmissionKey("submission.py", null))
                 .thenReturn("submission.py");
-        when(jobDispatcher.dispatch(19L, "submission.py", "fib", "local"))
+        when(jobDispatcher.dispatch(19L, "submission.py", SubmissionKind.SINGLE_FILE, "fib", "local"))
                 .thenThrow(new GradingFailureException(FailureReason.KUBERNETES_ERROR, "Cluster unavailable"));
 
         service.executeQueuedJob(19L, "worker-a");
@@ -258,7 +307,7 @@ class JobExecutionServiceTest {
         when(jobRepository.claimQueuedJob(20L, "worker-a")).thenReturn(1);
         when(submissionStorageService.resolveSubmissionKey("submission.py", null))
                 .thenReturn("submission.py");
-        when(jobDispatcher.dispatch(20L, "submission.py", "fib", "local"))
+        when(jobDispatcher.dispatch(20L, "submission.py", SubmissionKind.SINGLE_FILE, "fib", "local"))
                 .thenThrow(new GradingFailureException(FailureReason.KUBERNETES_ERROR, "Cluster unavailable"));
 
         service.executeQueuedJob(20L, "worker-a");
@@ -279,7 +328,7 @@ class JobExecutionServiceTest {
         when(jobRepository.claimQueuedJob(22L, "worker-a")).thenReturn(1);
         when(submissionStorageService.resolveSubmissionKey("submission.py", null))
                 .thenReturn("submission.py");
-        when(jobDispatcher.dispatch(22L, "submission.py", "fib", "local"))
+        when(jobDispatcher.dispatch(22L, "submission.py", SubmissionKind.SINGLE_FILE, "fib", "local"))
                 .thenThrow(new RuntimeException("Unexpected worker failure"));
 
         service.executeQueuedJob(22L, "worker-a");

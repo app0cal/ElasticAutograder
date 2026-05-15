@@ -41,6 +41,13 @@ public class Job {
     @Column(name = "submission_id")
     private Long submissionId;
 
+    @Column(name = "submission_project_id")
+    private Long submissionProjectId;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "submission_kind", nullable = false)
+    private SubmissionKind submissionKind;
+
     @Column(name = "grader_image")
     private String graderImage;
 
@@ -118,6 +125,7 @@ public class Job {
         this.status = status;
         this.failureReason = FailureReason.NONE;
         this.failureMessage = null;
+        this.submissionKind = SubmissionKind.SINGLE_FILE;
         this.institutionId = RequestIdentity.DEFAULT_INSTITUTION;
         this.submittedBy = RequestIdentity.DEFAULT_USER;
         this.queuedAt = status == JobStatus.QUEUED ? createdAt : null;
@@ -159,6 +167,22 @@ public class Job {
 
     public void setSubmissionId(Long submissionId) {
         this.submissionId = submissionId;
+    }
+
+    public Long getSubmissionProjectId() {
+        return submissionProjectId;
+    }
+
+    public void setSubmissionProjectId(Long submissionProjectId) {
+        this.submissionProjectId = submissionProjectId;
+    }
+
+    public SubmissionKind getSubmissionKind() {
+        return submissionKind;
+    }
+
+    public void setSubmissionKind(SubmissionKind submissionKind) {
+        this.submissionKind = submissionKind;
     }
 
     public String getGraderImage() {

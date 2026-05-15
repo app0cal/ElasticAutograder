@@ -2,6 +2,8 @@ package com.autograder.service.dispatch;
 
 import tools.jackson.databind.JsonNode;
 
+import com.autograder.model.SubmissionKind;
+
 /**
  * Dispatch boundary for grading work.
  *
@@ -10,5 +12,11 @@ import tools.jackson.databind.JsonNode;
  */
 public interface JobDispatcher {
 
-    JsonNode dispatch(Long jobId, String submissionKey, String graderType, String institutionId) throws Exception;
+    JsonNode dispatch(
+            Long jobId,
+            String submissionKey,
+            SubmissionKind submissionKind,
+            String graderType,
+            String institutionId
+    ) throws Exception;
 }

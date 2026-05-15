@@ -14,6 +14,13 @@ After the backend and at least one worker are running, validate the full grading
 python scripts/smoke-test.py
 ```
 
+If you are working on project submissions, load the project grader and run the project smoke scenario:
+
+```bash
+python scripts/setup-graders.py --grader fib-java-project
+python scripts/smoke-test.py --scenario project-java-pass
+```
+
 ## Stop Running Compose Services
 
 ```bash

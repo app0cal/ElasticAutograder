@@ -12,6 +12,7 @@ import org.springframework.stereotype.Service;
 import com.autograder.model.FailureReason;
 import com.autograder.model.Job;
 import com.autograder.model.JobStatus;
+import com.autograder.model.SubmissionKind;
 import com.autograder.repository.JobRepository;
 import com.autograder.service.GradingFailureException;
 import com.autograder.service.LocalGraderSetupStatus;
@@ -112,7 +113,7 @@ public class JobExecutionService {
         String submissionKey;
 
         try {
-            submissionKey = submissionStorageService.resolveSubmissionKey(job.getSubmissionPath(), null);
+            submissionKey = resolveExecutionSubmissionKey(job);
 
             logger.info(
                     "Started grading job jobId={} institutionId={} graderType={} workerId={}",
@@ -121,7 +122,13 @@ public class JobExecutionService {
                     job.getGraderType(),
                     workerId
             );
-            var result = jobDispatcher.dispatch(id, submissionKey, job.getGraderType(), job.getInstitutionId());
+            var result = jobDispatcher.dispatch(
+                    id,
+                    submissionKey,
+                    job.getSubmissionKind(),
+                    job.getGraderType(),
+                    job.getInstitutionId()
+            );
 
             jobResultMapper.applyJobResults(job, result);
             job.setFinishedAt(OffsetDateTime.now());
@@ -171,6 +178,17 @@ public class JobExecutionService {
         job.setQueueMessageId(UUID.randomUUID().toString());
         job.setUpdatedAt(OffsetDateTime.now());
         jobRepository.saveAndFlush(job);
+    }
+
+    private String resolveExecutionSubmissionKey(Job job) {
+        if (job.getSubmissionKind() == SubmissionKind.PROJECT_ZIP) {
+            if (job.getSubmissionPath() == null || job.getSubmissionPath().isBlank()) {
+                throw new IllegalArgumentException("Project submission key is required.");
+            }
+            return job.getSubmissionPath();
+        }
+
+        return submissionStorageService.resolveSubmissionKey(job.getSubmissionPath(), null);
     }
 
     private void handleExecutionFailure(Job job, FailureReason failureReason, String message) {

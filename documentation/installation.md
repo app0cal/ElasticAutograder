@@ -69,6 +69,7 @@ Useful options:
 ```bash
 # Build/load only one grader
 python scripts/setup-graders.py --grader fib-java
+python scripts/setup-graders.py --grader fib-java-project
 
 # Clean Docker rebuild
 python scripts/setup-graders.py --no-cache
@@ -88,6 +89,13 @@ python scripts/doctor.py
 ```
 
 It checks local tools, Docker services, kind, Kubernetes access, grader images, and backend health when the API is running.
+
+If you are setting up project submissions, load the project grader and verify it with the project smoke scenario:
+
+```bash
+python scripts/setup-graders.py --grader fib-java-project
+python scripts/smoke-test.py --scenario project-java-pass
+```
 
 ## 7. Choose A Run Mode
 

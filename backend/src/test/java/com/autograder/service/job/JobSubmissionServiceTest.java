@@ -19,10 +19,12 @@ import org.springframework.mock.web.MockMultipartFile;
 import com.autograder.model.GraderDefinition;
 import com.autograder.model.Job;
 import com.autograder.model.JobStatus;
+import com.autograder.model.SubmissionKind;
 import com.autograder.repository.JobRepository;
 import com.autograder.service.GraderRegistry;
 import com.autograder.service.LocalGraderSetupStatus;
 import com.autograder.service.identity.RequestIdentity;
+import com.autograder.service.submission.StoredProjectSubmission;
 import com.autograder.service.submission.StoredSubmission;
 import com.autograder.service.submission.SubmissionStorageService;
 
@@ -51,6 +53,8 @@ class JobSubmissionServiceTest {
         when(graderRegistry.getRequired("local", "fib")).thenReturn(grader());
         when(graderRegistry.getRequired("local", "fib-java")).thenReturn(grader("fib-java", "java"));
         when(graderRegistry.getRequired("local", "fib-cpp")).thenReturn(grader("fib-cpp", "cpp"));
+        when(graderRegistry.getRequired("local", "fib-single")).thenReturn(grader("fib-single", "python", "single_file"));
+        when(graderRegistry.getRequired("local", "fib-project")).thenReturn(grader("fib-project", "java", "project_zip"));
         when(jobRepository.save(any(Job.class))).thenAnswer(invocation -> {
             Job job = invocation.getArgument(0);
             setJobId(job, 1L);
@@ -77,6 +81,7 @@ class JobSubmissionServiceTest {
         assertEquals("local", savedJob.getValue().getInstitutionId());
         assertEquals("anonymous", savedJob.getValue().getSubmittedBy());
         assertEquals(JobStatus.QUEUED, savedJob.getValue().getStatus());
+        assertEquals(SubmissionKind.SINGLE_FILE, savedJob.getValue().getSubmissionKind());
         assertEquals("ea-grader-fib:v1", savedJob.getValue().getGraderImage());
         verify(jobExecutionService).enqueueJob(1L, RequestIdentity.localAnonymous());
     }
@@ -93,7 +98,12 @@ class JobSubmissionServiceTest {
 
         assertEquals("Successfully queued batch.", response.message());
         assertEquals(2, response.jobs().size());
-        verify(jobRepository, times(2)).save(any(Job.class));
+        ArgumentCaptor<Job> savedJobs = ArgumentCaptor.forClass(Job.class);
+        verify(jobRepository, times(2)).save(savedJobs.capture());
+        assertEquals(
+                List.of(SubmissionKind.BATCH_FILE, SubmissionKind.BATCH_FILE),
+                savedJobs.getAllValues().stream().map(Job::getSubmissionKind).toList()
+        );
         verify(jobExecutionService, times(2)).enqueueJob(any(), any());
     }
 
@@ -216,6 +226,64 @@ class JobSubmissionServiceTest {
         verify(jobRepository, times(0)).save(any());
     }
 
+    @Test
+    void upload_singleFileModeRejectsZipBeforeStorage() throws Exception {
+        when(submissionStorageService.isZipUpload(any())).thenReturn(true);
+
+        IllegalArgumentException exception = assertThrows(
+                IllegalArgumentException.class,
+                () -> service.upload(file("batch.zip"), "fib-single", RequestIdentity.localAnonymous())
+        );
+
+        assertEquals("Grader 'fib-single' accepts .py files.", exception.getMessage());
+        verify(submissionStorageService, times(0)).storeZip(any(), any());
+        verify(jobRepository, times(0)).save(any());
+    }
+
+    @Test
+    void upload_projectZipModeRejectsSourceFileBeforeStorage() throws Exception {
+        when(submissionStorageService.isZipUpload(any())).thenReturn(false);
+
+        IllegalArgumentException exception = assertThrows(
+                IllegalArgumentException.class,
+                () -> service.upload(file("Main.java"), "fib-project", RequestIdentity.localAnonymous())
+        );
+
+        assertEquals("Grader 'fib-project' accepts .zip project archives.", exception.getMessage());
+        verify(submissionStorageService, times(0)).storeSingle(any(), any());
+        verify(jobRepository, times(0)).save(any());
+    }
+
+    @Test
+    void upload_projectZipModeCreatesOneQueuedProjectJobAndEnqueuesIt() throws Exception {
+        when(submissionStorageService.isZipUpload(any())).thenReturn(true);
+        when(submissionStorageService.storeProjectZip(any(), any()))
+                .thenReturn(new StoredProjectSubmission(
+                        81L,
+                        "project:2ee63863-c9ec-4a1f-8ce9-d4db05cc7a5c",
+                        "project.zip",
+                        3
+                ));
+
+        UploadJobResponse response = service.upload(
+                file("project.zip"),
+                "fib-project",
+                RequestIdentity.localAnonymous()
+        );
+
+        assertEquals("Successfully queued project.", response.message());
+        assertEquals(1, response.jobs().size());
+
+        ArgumentCaptor<Job> savedJob = ArgumentCaptor.forClass(Job.class);
+        verify(jobRepository).save(savedJob.capture());
+        assertEquals("project.zip", savedJob.getValue().getOriginalFilename());
+        assertEquals("project:2ee63863-c9ec-4a1f-8ce9-d4db05cc7a5c", savedJob.getValue().getSubmissionPath());
+        assertEquals(81L, savedJob.getValue().getSubmissionProjectId());
+        assertEquals(SubmissionKind.PROJECT_ZIP, savedJob.getValue().getSubmissionKind());
+        assertEquals("fib-project", savedJob.getValue().getGraderType());
+        verify(jobExecutionService).enqueueJob(1L, RequestIdentity.localAnonymous());
+    }
+
     private MockMultipartFile file() {
         return file("submission.py");
     }
@@ -231,6 +299,12 @@ class JobSubmissionServiceTest {
     private GraderDefinition grader(String key, String language) {
         GraderDefinition grader = new GraderDefinition(key, key, "ea-grader-" + key + ":v1", "/app/grader/manifest.json");
         grader.setLanguage(language);
+        return grader;
+    }
+
+    private GraderDefinition grader(String key, String language, String uploadMode) {
+        GraderDefinition grader = grader(key, language);
+        grader.setUploadMode(uploadMode);
         return grader;
     }
 

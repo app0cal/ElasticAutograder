@@ -216,6 +216,7 @@ export default function JobDetailsPage() {
             <div className="job-details-list">
               <DetailRow label="Grader Image" value={formatDiagnosticValue(job.graderImage)} />
               <DetailRow label="Submitted File" value={formatDiagnosticValue(job.originalFilename)} />
+              <DetailRow label="Submission Kind" value={formatDiagnosticValue(job.submissionKind)} />
               <DetailRow label="Institution" value={formatDiagnosticValue(job.institutionId)} />
               <DetailRow label="Submitted By" value={formatDiagnosticValue(job.submittedBy)} />
               <DetailRow label="Kubernetes Job Name" value={formatDiagnosticValue(job.k8sJobName)} />

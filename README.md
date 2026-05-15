@@ -12,7 +12,7 @@
 
 Elastic Autograder is an open source grading platform for running programming submissions through isolated, observable grader jobs.
 
-It combines a Spring Boot API, React frontend, Redis-backed job queue, Postgres job state, and Kubernetes grader execution. The current demo supports Python function graders plus single-file Java and C++ stdin/stdout graders through a shared manifest runtime.
+It combines a Spring Boot API, React frontend, Redis-backed job queue, Postgres job state, and Kubernetes grader execution. The current demo supports Python function graders, single-file Java and C++ stdin/stdout graders, and a sample Java project grader through a shared manifest runtime.
 
 ## Highlights
 
@@ -66,6 +66,13 @@ After the backend and a worker are running, verify the full grading path:
 python scripts/smoke-test.py
 ```
 
+To verify the project path, load the project grader and run the project smoke scenario:
+
+```bash
+python scripts/setup-graders.py --grader fib-java-project
+python scripts/smoke-test.py --scenario project-java-pass
+```
+
 ## Shutdown
 
 ```bash
@@ -104,7 +111,7 @@ Additional:
 
 ## Project Status
 
-The project is a local-first autograder demo with a focus on distributed workers, isolated grader execution, and realistic failure handling. Java and C++ support currently targets single-file submissions; project-based submissions are a future goal.
+The project is a local-first autograder demo with a focus on distributed workers, isolated grader execution, and realistic failure handling. Java and C++ support currently targets single-file submissions, and project-based submissions are available through the `fib-java-project` sample grader.
 
 ## Contributing
 

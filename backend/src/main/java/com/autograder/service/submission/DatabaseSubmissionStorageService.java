@@ -18,6 +18,10 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
 
 import com.autograder.model.Submission;
+import com.autograder.model.SubmissionProject;
+import com.autograder.model.SubmissionProjectFile;
+import com.autograder.repository.SubmissionProjectFileRepository;
+import com.autograder.repository.SubmissionProjectRepository;
 import com.autograder.repository.SubmissionRepository;
 import com.autograder.service.identity.RequestIdentity;
 
@@ -29,12 +33,25 @@ import com.autograder.service.identity.RequestIdentity;
 public class DatabaseSubmissionStorageService implements SubmissionStorageService {
 
     private static final String STORAGE_KEY_PREFIX = "db:";
+    private static final String PROJECT_STORAGE_KEY_PREFIX = "project:";
     private static final String DEFAULT_CONTENT_TYPE = "text/plain";
+    private static final int MAX_PROJECT_FILES = 100;
+    private static final long MAX_PROJECT_TOTAL_BYTES = 1_000_000;
+    private static final long MAX_PROJECT_FILE_BYTES = 200_000;
+    private static final int MAX_PROJECT_PATH_DEPTH = 8;
 
     private final SubmissionRepository submissionRepository;
+    private final SubmissionProjectRepository submissionProjectRepository;
+    private final SubmissionProjectFileRepository submissionProjectFileRepository;
 
-    public DatabaseSubmissionStorageService(SubmissionRepository submissionRepository) {
+    public DatabaseSubmissionStorageService(
+            SubmissionRepository submissionRepository,
+            SubmissionProjectRepository submissionProjectRepository,
+            SubmissionProjectFileRepository submissionProjectFileRepository
+    ) {
         this.submissionRepository = submissionRepository;
+        this.submissionProjectRepository = submissionProjectRepository;
+        this.submissionProjectFileRepository = submissionProjectFileRepository;
     }
 
     /**
@@ -90,6 +107,75 @@ public class DatabaseSubmissionStorageService implements SubmissionStorageServic
         }
 
         return submissions;
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public StoredProjectSubmission storeProjectZip(MultipartFile file, RequestIdentity identity) throws IOException {
+        String originalFileName = sanitizeFileName(file.getOriginalFilename());
+        List<ProjectFileEntry> files = readProjectZipEntries(file);
+        long totalSizeBytes = files.stream().mapToLong(ProjectFileEntry::sizeBytes).sum();
+        UUID storageKey = UUID.randomUUID();
+
+        SubmissionProject project = new SubmissionProject(
+                storageKey,
+                originalFileName,
+                identity.institution(),
+                identity.user(),
+                totalSizeBytes,
+                files.size()
+        );
+        SubmissionProject savedProject = submissionProjectRepository.save(project);
+
+        List<SubmissionProjectFile> projectFiles = files.stream()
+                .map(projectFile -> new SubmissionProjectFile(
+                        savedProject,
+                        projectFile.relativePath(),
+                        projectFile.content(),
+                        DEFAULT_CONTENT_TYPE,
+                        projectFile.sizeBytes()
+                ))
+                .toList();
+        submissionProjectFileRepository.saveAll(projectFiles);
+
+        return new StoredProjectSubmission(
+                savedProject.getId(),
+                PROJECT_STORAGE_KEY_PREFIX + storageKey,
+                originalFileName,
+                files.size()
+        );
+    }
+
+    @Override
+    public StoredProject readProject(String projectKey) {
+        UUID storageKey = parseProjectStorageKey(projectKey);
+        SubmissionProject project = submissionProjectRepository.findByStorageKey(storageKey)
+                .orElseThrow(() -> new IllegalArgumentException("Project submission not found: " + projectKey));
+
+        List<StoredProjectFile> files = submissionProjectFileRepository.findByProjectIdOrderByRelativePathAsc(project.getId())
+                .stream()
+                .map(projectFile -> new StoredProjectFile(
+                        projectFile.getRelativePath(),
+                        projectFile.getContent(),
+                        projectFile.getContentType(),
+                        projectFile.getSizeBytes()
+                ))
+                .toList();
+
+        return new StoredProject(PROJECT_STORAGE_KEY_PREFIX + storageKey, project.getOriginalFilename(), files);
+    }
+
+    @Override
+    @Transactional
+    public boolean deleteProject(String projectKey) {
+        UUID storageKey = parseProjectStorageKey(projectKey);
+        return submissionProjectRepository.findByStorageKey(storageKey)
+                .map(project -> {
+                    submissionProjectFileRepository.deleteByProjectId(project.getId());
+                    submissionProjectRepository.delete(project);
+                    return true;
+                })
+                .orElse(false);
     }
 
     @Override
@@ -157,7 +243,61 @@ public class DatabaseSubmissionStorageService implements SubmissionStorageServic
 
     @Override
     public void deleteIfExists(String submissionKey) {
+        if (isProjectStorageKey(submissionKey)) {
+            deleteProject(submissionKey);
+            return;
+        }
+
         delete(submissionKey);
+    }
+
+    private List<ProjectFileEntry> readProjectZipEntries(MultipartFile file) throws IOException {
+        List<ProjectFileEntry> files = new ArrayList<>();
+        Set<String> seenPaths = new LinkedHashSet<>();
+        long totalBytes = 0;
+
+        try (ZipInputStream zipInputStream = new ZipInputStream(file.getInputStream())) {
+            ZipEntry entry;
+
+            while ((entry = zipInputStream.getNextEntry()) != null) {
+                if (entry.isDirectory()) {
+                    zipInputStream.closeEntry();
+                    continue;
+                }
+
+                String relativePath = sanitizeProjectZipEntryPath(entry.getName());
+                if (!seenPaths.add(relativePath)) {
+                    throw new IllegalArgumentException("Project archive contains duplicate file path: " + relativePath);
+                }
+
+                byte[] bytes = readEntryBytes(zipInputStream);
+                if (bytes.length > MAX_PROJECT_FILE_BYTES) {
+                    throw new IllegalArgumentException("Project archive contains a file larger than 200000 bytes.");
+                }
+
+                totalBytes += bytes.length;
+                if (totalBytes > MAX_PROJECT_TOTAL_BYTES) {
+                    throw new IllegalArgumentException("Project archive is larger than 1000000 bytes.");
+                }
+
+                files.add(new ProjectFileEntry(
+                        relativePath,
+                        new String(bytes, StandardCharsets.UTF_8),
+                        bytes.length
+                ));
+                if (files.size() > MAX_PROJECT_FILES) {
+                    throw new IllegalArgumentException("Project archive contains more than 100 files.");
+                }
+
+                zipInputStream.closeEntry();
+            }
+        }
+
+        if (files.isEmpty()) {
+            throw new IllegalArgumentException("Project archive does not contain any files.");
+        }
+
+        return files;
     }
 
     private StoredSubmission saveSubmission(
@@ -227,6 +367,15 @@ public class DatabaseSubmissionStorageService implements SubmissionStorageServic
         return normalized;
     }
 
+    private String sanitizeProjectZipEntryPath(String rawEntryName) {
+        Path normalized = sanitizeZipEntryName(rawEntryName);
+        if (normalized.getNameCount() > MAX_PROJECT_PATH_DEPTH) {
+            throw new IllegalArgumentException("Project archive contains a path deeper than 8 levels.");
+        }
+
+        return normalized.toString().replace('\\', '/');
+    }
+
     private UUID parseStorageKey(String rawStorageKey) {
         String cleaned = stripJsonStringQuotes(rawStorageKey.trim());
         if (cleaned.startsWith(STORAGE_KEY_PREFIX)) {
@@ -240,11 +389,35 @@ public class DatabaseSubmissionStorageService implements SubmissionStorageServic
         }
     }
 
+    private UUID parseProjectStorageKey(String rawStorageKey) {
+        String cleaned = stripJsonStringQuotes(rawStorageKey.trim());
+        if (cleaned.startsWith(PROJECT_STORAGE_KEY_PREFIX)) {
+            cleaned = cleaned.substring(PROJECT_STORAGE_KEY_PREFIX.length());
+        }
+
+        try {
+            return UUID.fromString(cleaned);
+        } catch (IllegalArgumentException e) {
+            throw new IllegalArgumentException("Invalid project submission key.");
+        }
+    }
+
+    private boolean isProjectStorageKey(String submissionKey) {
+        if (submissionKey == null) {
+            return false;
+        }
+
+        return stripJsonStringQuotes(submissionKey.trim()).startsWith(PROJECT_STORAGE_KEY_PREFIX);
+    }
+
     private String stripJsonStringQuotes(String cleaned) {
         if (cleaned.startsWith("\"") && cleaned.endsWith("\"") && cleaned.length() >= 2) {
             return cleaned.substring(1, cleaned.length() - 1).trim();
         }
 
         return cleaned;
+    }
+
+    private record ProjectFileEntry(String relativePath, String content, long sizeBytes) {
     }
 }

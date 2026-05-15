@@ -305,8 +305,9 @@ export default function SubmitJobPage() {
             <div className="submit-context-block">
               <span className="submit-context-label">Accepted formats</span>
               <div className="submit-format-list">
-                <span>{acceptedFormat.sourceExtension}</span>
-                <span>.zip</span>
+                {acceptedFormat.extensions.map((extension) => (
+                  <span key={extension}>{extension}</span>
+                ))}
               </div>
             </div>
 
@@ -332,31 +333,44 @@ function isFileAllowed(file, acceptedFormat) {
   }
 
   const fileName = file.name.toLowerCase();
-  return fileName.endsWith(acceptedFormat.sourceExtension) || fileName.endsWith(".zip");
+  return acceptedFormat.extensions.some((extension) => fileName.endsWith(extension));
 }
 
 function getAcceptedFormat(grader) {
   const language = (grader?.language || "python").toLowerCase();
+  const uploadMode = (grader?.uploadMode || "batch_zip").toLowerCase();
 
   if (language === "java") {
-    return buildAcceptedFormat(".java", "Java grading image");
+    return buildAcceptedFormat(".java", "Java grading image", uploadMode);
   }
 
   if (language === "cpp" || language === "c++") {
-    return buildAcceptedFormat(".cpp", "C++ grading image");
+    return buildAcceptedFormat(".cpp", "C++ grading image", uploadMode);
   }
 
-  return buildAcceptedFormat(".py", "Python grading image");
+  return buildAcceptedFormat(".py", "Python grading image", uploadMode);
 }
 
-function buildAcceptedFormat(sourceExtension, runtimeLabel) {
-  const shortLabel = `${sourceExtension} or .zip`;
+function buildAcceptedFormat(sourceExtension, runtimeLabel, uploadMode) {
+  const extensions = uploadMode === "project_zip"
+    ? [".zip"]
+    : uploadMode === "single_file"
+      ? [sourceExtension]
+      : [sourceExtension, ".zip"];
+  const shortLabel = extensions.join(" or ");
+  const dropLabel = uploadMode === "project_zip"
+    ? "Drop a .zip project archive here"
+    : uploadMode === "single_file"
+      ? `Drop a ${sourceExtension} file here`
+      : `Drop a ${sourceExtension} file or .zip archive here`;
+
   return {
     sourceExtension,
+    extensions,
     runtimeLabel,
-    accept: `${sourceExtension},.zip`,
+    accept: extensions.join(","),
     shortLabel,
-    dropLabel: `Drop a ${sourceExtension} file or .zip archive here`,
+    dropLabel,
     errorMessage: `This grader accepts ${shortLabel} files.`
   };
 }

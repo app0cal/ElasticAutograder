@@ -2,6 +2,7 @@ package com.autograder.service.dispatch;
 
 import org.springframework.stereotype.Service;
 
+import com.autograder.model.SubmissionKind;
 import com.autograder.service.GradingOrchestrator;
 
 import tools.jackson.databind.JsonNode;
@@ -19,7 +20,13 @@ public class SynchronousJobDispatcher implements JobDispatcher {
     }
 
     @Override
-    public JsonNode dispatch(Long jobId, String submissionKey, String graderType, String institutionId) throws Exception {
-        return gradingOrchestrator.runJobInKubernetes(jobId, submissionKey, graderType, institutionId);
+    public JsonNode dispatch(
+            Long jobId,
+            String submissionKey,
+            SubmissionKind submissionKind,
+            String graderType,
+            String institutionId
+    ) throws Exception {
+        return gradingOrchestrator.runJobInKubernetes(jobId, submissionKey, submissionKind, graderType, institutionId);
     }
 }

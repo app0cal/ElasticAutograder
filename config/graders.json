@@ -6,6 +6,7 @@
       "graderFolder": "fib",
       "label": "Fibonacci",
       "imageName": "ea-grader-fibbonaci:v1",
+      "uploadMode": "batch_zip",
       "manifestPath": "/app/grader/manifest.json",
       "summary": "Return the nth Fibonacci number from the classic sequence that starts at 0 and 1.",
       "details": [
@@ -21,6 +22,7 @@
       "graderFolder": "fib-performance",
       "label": "Fibonacci Performance",
       "imageName": "ea-grader-fib-performance:v1",
+      "uploadMode": "batch_zip",
       "manifestPath": "/app/grader/manifest.json",
       "summary": "Return Fibonacci numbers efficiently enough for larger generated inputs.",
       "details": [
@@ -41,6 +43,7 @@
       "label": "Fibonacci Java",
       "imageName": "ea-grader-fib-java:v1",
       "language": "java",
+      "uploadMode": "batch_zip",
       "manifestPath": "/app/grader/manifest.json",
       "summary": "Read n from stdin in a single Java file and print the nth Fibonacci number.",
       "details": [
@@ -56,11 +59,33 @@
     },
     {
       "institutionId": "local",
+      "key": "fib-java-project",
+      "graderFolder": "fib-java-project",
+      "label": "Fibonacci Java Project",
+      "imageName": "ea-grader-fib-java-project:v1",
+      "language": "java",
+      "uploadMode": "project_zip",
+      "manifestPath": "/app/grader/manifest.json",
+      "summary": "Submit a zipped multi-file Java project that reads n from stdin and prints the nth Fibonacci number.",
+      "details": [
+        "The project archive should contain src/Main.java and src/Fibonacci.java.",
+        "Main should read a single integer from standard input and delegate the calculation to Fibonacci.",
+        "Print only the Fibonacci value followed by a newline."
+      ],
+      "timeoutSeconds": 30,
+      "cpuRequestMilli": 100,
+      "cpuLimitMilli": 500,
+      "memoryRequestMb": 128,
+      "memoryLimitMb": 512
+    },
+    {
+      "institutionId": "local",
       "key": "fib-cpp",
       "graderFolder": "fib-cpp",
       "label": "Fibonacci C++",
       "imageName": "ea-grader-fib-cpp:v1",
       "language": "cpp",
+      "uploadMode": "batch_zip",
       "manifestPath": "/app/grader/manifest.json",
       "summary": "Read n from stdin in a single C++ file and print the nth Fibonacci number.",
       "details": [
@@ -80,6 +105,7 @@
       "graderFolder": "twosum",
       "label": "Two Sum",
       "imageName": "ea-grader-twosum:v1",
+      "uploadMode": "batch_zip",
       "manifestPath": "/app/grader/manifest.json",
       "summary": "Find the two indices whose values add up to the target.",
       "details": [
@@ -94,6 +120,7 @@
       "graderFolder": "memory-demo",
       "label": "Memory Limit Demo",
       "imageName": "ea-grader-memory-demo:v1",
+      "uploadMode": "batch_zip",
       "manifestPath": "/app/grader/manifest.json",
       "summary": "Return True to pass the test, but used to demonstrate Kubernetes memory-limit failures with a small, isolated stress test.",
       "details": [

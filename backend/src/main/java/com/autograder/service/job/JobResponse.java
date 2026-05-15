@@ -6,6 +6,7 @@ import java.time.OffsetDateTime;
 import com.autograder.model.FailureReason;
 import com.autograder.model.Job;
 import com.autograder.model.JobStatus;
+import com.autograder.model.SubmissionKind;
 
 /**
  * Frontend-safe job payload that hides internal submission storage keys.
@@ -14,6 +15,7 @@ public record JobResponse(
         Long id,
         String graderType,
         String originalFilename,
+        SubmissionKind submissionKind,
         String graderImage,
         String institutionId,
         String submittedBy,
@@ -42,6 +44,7 @@ public record JobResponse(
                 job.getId(),
                 job.getGraderType(),
                 job.getOriginalFilename(),
+                job.getSubmissionKind(),
                 job.getGraderImage(),
                 job.getInstitutionId(),
                 job.getSubmittedBy(),

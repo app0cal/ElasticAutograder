@@ -25,6 +25,7 @@ class JobTest {
         assertEquals(createdAt, job.getCreatedAt());
         assertEquals(createdAt, job.getUpdatedAt());
         assertEquals(JobStatus.QUEUED, job.getStatus());
+        assertEquals(SubmissionKind.SINGLE_FILE, job.getSubmissionKind());
         assertEquals(FailureReason.NONE, job.getFailureReason());
         assertNull(job.getFailureMessage());
         assertEquals(createdAt, job.getQueuedAt());
@@ -45,6 +46,8 @@ class JobTest {
         job.setGraderType("fib");
         job.setSubmissionPath("batch/submission.py");
         job.setSubmissionId(42L);
+        job.setSubmissionProjectId(84L);
+        job.setSubmissionKind(SubmissionKind.PROJECT_ZIP);
         job.setGraderImage("ea-grader-fibbonaci:v1");
         job.setStatus(JobStatus.SUCCEEDED);
         job.setFailureReason(FailureReason.NONE);
@@ -68,6 +71,8 @@ class JobTest {
         assertEquals("fib", job.getGraderType());
         assertEquals("batch/submission.py", job.getSubmissionPath());
         assertEquals(42L, job.getSubmissionId());
+        assertEquals(84L, job.getSubmissionProjectId());
+        assertEquals(SubmissionKind.PROJECT_ZIP, job.getSubmissionKind());
         assertEquals("ea-grader-fibbonaci:v1", job.getGraderImage());
         assertEquals(JobStatus.SUCCEEDED, job.getStatus());
         assertEquals(FailureReason.NONE, job.getFailureReason());

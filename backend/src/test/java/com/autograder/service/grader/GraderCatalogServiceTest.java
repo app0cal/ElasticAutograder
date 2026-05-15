@@ -23,6 +23,7 @@ class GraderCatalogServiceTest {
         grader.setKey("fib");
         grader.setLabel("Fibonacci");
         grader.setLanguage("cpp");
+        grader.setUploadMode("single_file");
         grader.setSummary("Summary");
         grader.setDetails(List.of("Detail"));
         when(graderRegistry.getAll("university-a")).thenReturn(List.of(grader));
@@ -33,6 +34,7 @@ class GraderCatalogServiceTest {
         assertEquals("fib", graders.get(0).getKey());
         assertEquals("Fibonacci", graders.get(0).getLabel());
         assertEquals("cpp", graders.get(0).getLanguage());
+        assertEquals("single_file", graders.get(0).getUploadMode());
         assertEquals("Summary", graders.get(0).getSummary());
         assertEquals(List.of("Detail"), graders.get(0).getDetails());
     }

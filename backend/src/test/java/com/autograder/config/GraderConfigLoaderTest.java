@@ -109,6 +109,7 @@ class GraderConfigLoaderTest {
         assertEquals("Fibonacci", fib.getLabel());
         assertEquals("ea-grader-fibbonaci:v1", fib.getImageName());
         assertEquals("python", fib.getLanguage());
+        assertEquals("batch_zip", fib.getUploadMode());
         assertEquals("/app/grader/manifest.json", fib.getManifestPath());
         assertEquals("Classic dynamic programming problem.", fib.getSummary());
         assertEquals(2, fib.getDetails().size());
@@ -395,6 +396,7 @@ class GraderConfigLoaderTest {
         assertEquals(500, grader.getCpuLimitMilli());
         assertEquals(128, grader.getMemoryRequestMb());
         assertEquals(512, grader.getMemoryLimitMb());
+        assertEquals("batch_zip", grader.getUploadMode());
     }
 
     @Test
@@ -422,6 +424,80 @@ class GraderConfigLoaderTest {
         GraderDefinition grader = createLoader().loadGraders(configFile).get(0);
 
         assertEquals("java", grader.getLanguage());
+    }
+
+    @Test
+    void loadGraders_optionalUploadMode_trimsAndNormalizesValue() throws Exception {
+        Path configFile = tempDir.resolve("graders.json");
+
+        String json = """
+                {
+                  "graders": [
+                    {
+                      "key": "project-java",
+                      "label": "Project Java",
+                      "imageName": "ea-grader-project-java:v1",
+                      "language": "java",
+                      "uploadMode": " PROJECT_ZIP ",
+                      "manifestPath": "/app/grader/manifest.json",
+                      "summary": "Build and grade a Java project archive.",
+                      "details": ["Submit a zip archive with the expected project structure."]
+                    }
+                  ]
+                }
+                """;
+
+        Files.writeString(configFile, json);
+
+        GraderDefinition grader = createLoader().loadGraders(configFile).get(0);
+
+        assertEquals("project_zip", grader.getUploadMode());
+    }
+
+    @Test
+    void loadGraders_repositoryConfig_containsJavaProjectGrader() throws Exception {
+        Path configFile = Path.of("..", "config", "graders.json");
+
+        GraderDefinition grader = createLoader().loadGraders(configFile)
+                .stream()
+                .filter(candidate -> "fib-java-project".equals(candidate.getKey()))
+                .findFirst()
+                .orElseThrow();
+
+        assertEquals("java", grader.getLanguage());
+        assertEquals("project_zip", grader.getUploadMode());
+        assertEquals("fib-java-project", grader.getGraderFolder());
+        assertEquals("ea-grader-fib-java-project:v1", grader.getImageName());
+    }
+
+    @Test
+    void loadGraders_invalidUploadMode_throwsException() throws Exception {
+        Path configFile = tempDir.resolve("graders.json");
+
+        String json = """
+                {
+                  "graders": [
+                    {
+                      "key": "project-java",
+                      "label": "Project Java",
+                      "imageName": "ea-grader-project-java:v1",
+                      "uploadMode": "folder",
+                      "manifestPath": "/app/grader/manifest.json",
+                      "summary": "Build and grade a Java project archive.",
+                      "details": ["Submit a zip archive with the expected project structure."]
+                    }
+                  ]
+                }
+                """;
+
+        Files.writeString(configFile, json);
+
+        IllegalStateException ex = assertThrows(
+                IllegalStateException.class,
+                () -> createLoader().loadGraders(configFile)
+        );
+
+        assertTrue(ex.getMessage().contains("invalid uploadMode"));
     }
 
     /**

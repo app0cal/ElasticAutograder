@@ -1,4 +1,6 @@
 DROP TABLE IF EXISTS jobs CASCADE;
+DROP TABLE IF EXISTS submission_project_files CASCADE;
+DROP TABLE IF EXISTS submission_projects CASCADE;
 DROP TABLE IF EXISTS submissions CASCADE;
 
 -- Uploaded submission content shared by backend and worker pods.
@@ -14,6 +16,30 @@ CREATE TABLE submissions (
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
+-- Uploaded project archives shared by backend and worker pods.
+CREATE TABLE submission_projects (
+  id BIGSERIAL PRIMARY KEY,
+  storage_key UUID NOT NULL UNIQUE,
+  original_filename TEXT NOT NULL,
+  institution_id TEXT NOT NULL DEFAULT 'local',
+  submitted_by TEXT NOT NULL DEFAULT 'anonymous',
+  total_size_bytes BIGINT NOT NULL,
+  file_count INT NOT NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+-- Files inside a project archive. relative_path preserves the archive layout.
+CREATE TABLE submission_project_files (
+  id BIGSERIAL PRIMARY KEY,
+  project_id BIGINT NOT NULL REFERENCES submission_projects(id) ON DELETE CASCADE,
+  relative_path TEXT NOT NULL,
+  content TEXT NOT NULL,
+  content_type TEXT,
+  size_bytes BIGINT NOT NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  UNIQUE (project_id, relative_path)
+);
+
 -- Main jobs table
 CREATE TABLE jobs (
   id BIGSERIAL PRIMARY KEY,
@@ -22,6 +48,10 @@ CREATE TABLE jobs (
   original_filename TEXT NOT NULL,
   submission_path TEXT,
   submission_id BIGINT REFERENCES submissions(id),
+  submission_project_id BIGINT REFERENCES submission_projects(id),
+  submission_kind TEXT NOT NULL DEFAULT 'SINGLE_FILE' CHECK (
+    submission_kind IN ('SINGLE_FILE', 'BATCH_FILE', 'PROJECT_ZIP')
+  ),
   grader_image TEXT,
   institution_id TEXT NOT NULL DEFAULT 'local',
   submitted_by TEXT NOT NULL DEFAULT 'anonymous',
@@ -88,6 +118,9 @@ CREATE INDEX idx_jobs_worker_id
 CREATE INDEX idx_jobs_submission_id
   ON jobs(submission_id);
 
+CREATE INDEX idx_jobs_submission_project_id
+  ON jobs(submission_project_id);
+
 CREATE INDEX idx_jobs_institution_created_at
   ON jobs(institution_id, created_at DESC);
 
@@ -99,6 +132,15 @@ CREATE INDEX idx_submissions_storage_key
 
 CREATE INDEX idx_submissions_institution
   ON submissions(institution_id);
+
+CREATE INDEX idx_submission_projects_storage_key
+  ON submission_projects(storage_key);
+
+CREATE INDEX idx_submission_projects_institution
+  ON submission_projects(institution_id);
+
+CREATE INDEX idx_submission_project_files_project_id
+  ON submission_project_files(project_id);
 
 -- Helper function to refresh updated_at on row updates
 CREATE OR REPLACE FUNCTION set_updated_at()
